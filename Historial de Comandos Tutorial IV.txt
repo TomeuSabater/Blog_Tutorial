@@ -1,0 +1,1940 @@
+//////////////////////////////////////////////////////////////////////
+
+Bartolomé Sabater
+Emili Darder - Desenvolupament Entorn Servidor - 2024-25-26
+
+Mejoras en el Front, aplicar un diseño más avanzado y refinado
+
+Uso del Motor de plantillas BLADE
+	Tailwindcss (Problemas y resolución) 
+	Anonymous Components
+	Class Based Components
+	Dynamic Components
+	Layout
+
+//////////////////////////////////////////////////////////////////////
+
+//// En este tema se verá un refinamiento a las View
+//// Utilizaremos el Motor de Plantillas Blade
+
+// Algo de repaso primero
+// Recordamos las Route de nuestro proyect
+
+λ php artisan route:list
+
+  GET|HEAD        postCRUD .................................. postCRUD.index › PostControllerCRUD@index
+  POST            postCRUD .................................. postCRUD.store › PostControllerCRUD@store
+  GET|HEAD        postCRUD/create ......................... postCRUD.create › PostControllerCRUD@create
+  GET|HEAD        postCRUD/{postCRUD} ......................... postCRUD.show › PostControllerCRUD@show
+  PUT|PATCH       postCRUD/{postCRUD} ..................... postCRUD.update › PostControllerCRUD@update
+  DELETE          postCRUD/{postCRUD} ................... postCRUD.destroy › PostControllerCRUD@destroy
+  GET|HEAD        postCRUD/{postCRUD}/edit .................... postCRUD.edit › PostControllerCRUD@edit
+  GET|HEAD        posts .......................................................... PostController@index
+
+  GET|HEAD        categoryCRUD ....................... categoryCRUD.index › CategoryControllerCRUD@index
+  POST            categoryCRUD ....................... categoryCRUD.store › CategoryControllerCRUD@store
+  GET|HEAD        categoryCRUD/create .............. categoryCRUD.create › CategoryControllerCRUD@create
+  GET|HEAD        categoryCRUD/{categoryCRUD} .......... categoryCRUD.show › CategoryControllerCRUD@show
+  PUT|PATCH       categoryCRUD/{categoryCRUD} ...... categoryCRUD.update › CategoryControllerCRUD@update
+  DELETE          categoryCRUD/{categoryCRUD} .... categoryCRUD.destroy › CategoryControllerCRUD@destroy
+  GET|HEAD        categoryCRUD/{categoryCRUD}/edit ..... categoryCRUD.edit › CategoryControllerCRUD@edit
+
+
+// Recordatorio sobre las rutas web; tienen una lógica un tanto diferente a las rutas API
+//	porque en entorno web es necesario primero crear un formulario
+
+// La ruta postCRUD.edit es un GET|HEAD porque es la que llama al formulario que mostrará el recurso 
+//	que a su vez llamará a postCRUD.update
+// La ruta postCRUD.update sí es un PUT|PATCH y es donde ya habría la modificación del recurso  
+
+// La ruta postCRUD.create es un  GET|HEAD porque es la que llama al formulario de creación del recurso 
+//	que a su vez llamará a postCRUD.store
+// La ruta postCRUD.store es un POST y es donde se llevará a cabo la verdadera creación el recurso 
+
+// Recordar que @csrf añade un Security Token tipo 'hidden' que implementa la de seguridad en el formulario, 
+//	por ejemplo, en resources>views>post>create.blade.php
+// En general, todos los formularios deberán tener esta directiva @csrf de seguridad, 
+//	simulan la persistencia de seguridad (loggin)
+// Con esta directiva, desde una página externa, no se podrá hacer un "POST" "PUT", 
+//	debe ser desde una página anterior generada por el servidor
+//	en caso contrario se rechaza la llamada
+
+//// Hasta hora hemos confeccionado un CRUD que funciona; es muy sencillo y hemos buscado la funcionalidad, pero no es estético
+//// Este tipo de CRUD más funcionales que estéticos serían suficientes para un prototipado de BackOffice, ni siquiera una MVP versión del proyecto. 
+////	en todo caso un MVP muy 'primitivo' para configurar tablas maestras si hubiera urgencia. 
+//// Vamos a ver cómo trabajamos con las View, para maquetarlo con un aspecto visual mejorado y avanzado
+//// Recordar que desde el Controller llamamos a las View que pueden estar compuestas por (HTML + CSS + JS)
+ 
+//// Comenzamos pues a trabajar mejorando la presentación  
+
+// Hemos visto cómo pasar datos a una View desde un Controller app>Http>Controllers>PostControllerCRUD.php
+// Ejemplo, llamada a la View post.show a la que le pasamos el 'post'=>$postCRUD
+
+    public function show(Post $postCRUD)
+    {
+        return view('post.show',['post' => $postCRUD]);  // El nombre del parámetro es así, postCRUD/{postCRUD}  
+    }
+
+// Podemos mejorar la llamada a la View añadiendo un 'with' 
+//	para pasar a la View info puntual y concreta (no para pasar arrays, collections, etc.)
+// Ejemplo, en el store() del Controller podemos añadir el 'with' en el return back() de la siguiente manera:
+
+        return back()->with('status', 'Publicación creada correctamente'); // Vuelve a la página anterior con un mensaje
+        return back()->with('status', 'Categoría creada correctamente'); // Vuelve a la página anterior con un mensaje
+
+// Recordar que como hacemos un back(), nos devolvería a la View llamante que es la
+//
+//	resources>view>post>create.blade.php donde deberíamos leer este with()
+//	resources>view>category>create.blade.php donde deberíamos leer este with()
+
+// En la View create.blade.php podemos añadir un control para mostrar este 'status', 
+// 	se añadade un control porque no tendremos este mensaje en la 1a llamada al formulario 
+//	y puede que sí en las siguientes
+// En create.blade.php añadir el código entre el @if ($errors->any()) y el 
+//      <form action="{{ route('postCRUD.store') }}" method="post">
+//      <form action="{{ route('categoryCRUD.store') }}" method="post">
+
+    <!-- Comprobamos si tenemos que mostrar un mensaje de status -->
+    @if (session('status'))
+        <div class="alert alert-primary role='alert'">
+            {!! session('status') !!}
+        </div>
+    @endif
+
+// Probarlo, creando algunas publicaciones y categorías
+http://<blog-app.test>/postCRUD/create
+http://<blog-app.test>/categoryCRUD/create
+
+
+// Ejercicio; en el destroy() podemos hacer algo similar 
+
+        $postCRUD->delete(); 
+	return back()->with('status', 'Publicación eliminada correctamente'); // Vuelve a la página llamante con un mensaje 
+
+        $categoryCRUD->delete(); 
+        return back()->with('status','Category eliminada correctamente'); // Vuelve a página llamante con un mensaje 
+
+// Y añadir el código para mostrar el mensaje de 'status' en la View index.blade.php
+//	porque el destroy() se llama desde la View index.blade.php 
+
+// En resources>views>post>index.blade.php
+// En resources>views>category>index.blade.php
+
+    <!-- Comprobamos si tenemos que mostrar un mensaje de status -->
+    @if (session('status'))
+        <div class="alert alert-primary role='alert'">
+            {!! session('status') !!}
+        </div>
+    @endif
+
+// Probarlo eliminando alguna publicación y categoría desde 
+http://blog-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+// En el Controller podemos 'saltar' a otra vista además del return back() como hemos visto hasta ahora
+// Ejemplo; en el store(), una vez ejecutado el código del Controller, 'saltar' a index() con un mensaje
+// Esto permite una lógica de:
+//	crear un elemento (publicación, categoría, etc.) 
+//	y 'saltar' al index() para mostrar todos los elementos, 
+//	y 'acompañarlo' con un mensaje. 	
+//	Recordar que en la View index tenemos el código que gestiona este 'status'
+
+        $post->save(); // Guarda el registro en la DDBB
+        return redirect()->route('postCRUD.index')->with('status','<h1>Publicación creada correctamente</h1>'); 
+
+        $category->save();  // Guarda el registro en la DDBB
+        return redirect()->route('categoryCRUD.index')->with('status','<h1>Categoría creada correctamente</h1>'); 
+
+// Probarlo 
+
+http://<blog-app.test>/postCRUD/create
+http://<blog-app.test>/categoryCRUD/create 
+
+// Y ahora se podría borrar el control de la View create.blade.php 
+//      puesto que el store() 'salta' a la index.blade.php
+// En general, podemos redireccionar según nos convenga
+
+// La visto es una manera muy sencilla de devolver una información puntual a una View
+
+// Lo visto hasta ahora valdría perfectamente como una versión beta, 
+//	o un prototipo de Backoffice, ya que es 100% funcional, aunque cuida mínimamente la presentación
+// Con esta versión, un poco mejorada estéticamente, incluso ya se podría salir a producción, 
+//	sería un MVP (Minium Valuable Product) para que los usuarios de backoffice
+//	pudieran comenzar a configurar los datos básicos: Categories, Tags, Users, etc.  
+// Es un CRUD que atiende más a funcionalidad que a presentación (por ejemplo, falta un Menú para las opciones)
+
+
+//////////////// MOTOR DE PLANTILLAS BLADE
+(https://laravel.com/docs/11.x/blade#main-content)
+
+//// Entramos de lleno en las posibilidades de presentación de Laravel
+////    mediante el motor de plantillas BLADE
+
+// Recordar que en resources>views> tenemos las View de la presentación; las vistas con código HTML + CSS + JS
+// El Motor de Plantillas BLADE nos da una serie de herramientas para mejorar las View
+
+// Hasta ahora, hemos visto que en las View para mostrar datos los ubicamos entre {{ }}
+// Ejemplo: de la index.blade.php de las publicaciones tenemos algo así: 
+
+                <td>{{ $post->id }}</td>
+                <td>{{ $post->title }}</td>
+                <td>{{ $post->url_clean }}</td>
+                <td>{{ $post->posted }}</td>
+                <td>{{ $post->content }}</td>
+                <td>{{ $post->user_id }}</td>
+                <td>{{ $post->category_id }}</td>
+                <td>{{ $post->created_at }}</td>
+                <td>{{ $post->updated_at }}</td>
+
+// Dentro de los {{ }} podemos incluir cualquier función() php 
+// Por ejemplo, probar este código dentro de index.blade.php
+// Veremos que muestra el time en milisegundos y un json de la estructura. 
+// Se puede usar para asignarlo a una variable JS y luego poder utilizar en JS
+
+    <div>
+        <span>{{time()}}</span>
+        <span>{{json_encode($posts)}}</span> 
+    </div>
+
+    <div>
+        <span>{{time()}}</span>
+        <span>{{json_encode($categories)}}</span> 
+    </div>
+
+http://<example-app.test>/postCRUD
+http://blog-app.test/categoryCRUD
+
+
+// Añadir el código de ejemplo siguiente (Comprobarlo sacando la console del navegador)
+// Tambien es ok para depuración, dejar el script y así lo podemos consultar en cualquier momento
+// Se podría manipular a nivel de JS
+// En index.blade.php añadir lo siguiente: 
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Index Posts</title>
+    
+    <!-- Mostramos estructura en formato Json vía consola para debug -->
+    <script>
+        var app = @json($posts);
+        console.log(app); 
+    </script>
+
+</head>
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index Category</title>
+
+    <!-- Mostramos estructura en formato Json vía consola para debug -->
+    <script>
+        var app = @json($categories);
+        console.log(app); 
+    </script>
+</head>
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+// y comprobarlo sacando la console del navegador
+// Comentarlo todo lo anterior y dejarlo como estaba
+//      o dejar el <script> de salida por consola para un futuro debug
+//      es una manera de substituir el dd($posts) que aboarta la ejecución
+
+
+// Inicialmente veremos la diferencia entre mostrar contenido de variables mediante {{ }} y mediante {!! !!}
+//	{{ }} el contenido de la variables es mostrada mediante htmlspecialchars de PHP para evaitar ataques XSS
+// 	{!! !!} el contenido de las variables se iterpreta, es decir, se muestra tal cual y el navegador lo interpretará 
+
+// En BLADE, para mostrar datos, siempre parsea mediante 'htmlspecialchars' de PHP para evitar ataques XSS 
+// Por ejemplo; en PostControllerCRUD.php modificar lo siguiente al return() de la función store()
+
+return redirect()->route('postCRUD.index')->with('status','<h1>Publicación creada correctamente</h1>'); 
+return redirect()->route('categoryCRUD.index')->with('status','<h1>Categoría creada correctamente</h1>'); 
+
+http://example-app.test/postCRUD/create
+http://blog-app.test/categoryCRUD/create
+
+
+// Veremos que, en ambos casos, muestra el <h1>, no lo interpreta
+//      observando el código html veremos que  &lt;h1&gt;Publicación creada correctamente&lt;/h1&gt;
+
+// Si queremos que, en lugar de mostrarse se interprete, hay que substituir {{ }}, y hay que indicarlo mediante {!! !!}
+// Ir al create.blade.php y modificar los siguiente
+//	Nota: Hasta la versión 12 era necesario aplicar el {!! !!} a partir de la 12 parece que lo aplica automáticamente (revisarlo)
+//	en los mensajes de status, en el resto de situaciones sigue siendo necesario diferenciarlo explícitamente
+
+    <!-- Comprobamos si tenemos que mostrar un mensaje de status -->
+    <!-- el if es necesario puesto que la primera vez no tendremos status -->
+    @if (session('status'))
+        <div class="alert alert-primary role='alert'">
+            {!! session('status') !!}
+        </div>
+    @endif
+
+http://example-app.test/postCRUD/create
+http://blog-app.test/categoryCRUD/create
+
+// Y ahora renderiza el mensaje en <h1>, en lugar de mostrar el tag <h1>
+
+// Por qué es necesario aplicar {!! !!}: // Nota, parece que en la versión 12 lo aplica automáticamente, lo enmascara, no lo interpreta. 
+// 	imaginad que en el textarea alguien mete el código <script>alert("HOLA")</script>, el htmlspecialchars lo evita, no lo interpreta
+// 	mostrará el <script>alert("Hola")</script>
+// 	Para interpretarlo habría que añadir el {!! !!}
+// 	Probar lo anterior, observamos que el content muestra el código y no lo interpreta.  
+//	porque tenemos un <td>{{ $post->content }}</td>
+
+
+// Inciso: Podemos usar una directiva de entorno para las View, 
+//      para determinar si estamos en local, producción, test, etc.
+// @env('local') @endenv
+// @env(['staging','production']) @endev
+// Y usarla según sea el caso, por ejemplo, mostrar o no un contenido en pantalla, mostrarlo o interpretarlo, etc.
+
+
+/////////// Código en BLADE
+
+// Ojo, no abusar, es código para generación y control de Views
+// 	en absoluto se debería usar para código de negocio, o reglas de negocio, que debe estar en los Controller
+// Tener presente que el código en Views es altamente recomendado para temas informativos o de diseño (CSS), 
+//	en absoluto es para control de programación
+// Ejemplo; qué info mostrar sería en el Controller, cómo mostrarla sería en la View 
+
+
+// Veamos como aplicar condicionales en las View:
+
+// Condicionales 
+// @if @else @elseif @endif
+// @isset @endiseet 
+// @empty @endempty
+
+// El Switch
+// @switch($i)
+// @case(1)
+// 	<!-- Primer caso -->
+// 	@break
+// @case(2)
+// 	<!-- Segundo caso -->
+// 	@break
+// @default
+//	<!-- Caso por defecto -->
+// @endswitch	
+
+// El for / foreach / forelse / while
+//@for ($i = 0; $i < 10; $i++)
+//	<li>The current value is {{ $i }}</li>
+//@endfor
+
+//@foreach ($users as $user)
+//	<p>This is user {{ $user->id }}</p>
+//@endforeach
+
+//@forelse ($users as $user) 
+//	<li>{{ $user->name }}</li>
+//@empty
+//	<p>No users</p>
+//@endforelse
+
+
+// Características de los bucles. 
+
+//@while (true)
+//	<p>I'm looping forever.</p>
+//@endwhile
+
+// Ejemplos de iteración:
+// En resources>views>post>index.blade.php añadir el siguiente código al inicio, y probarlo 
+@for ($i = 0; $i < 10; $i++)
+	<li>The current value is {{ $i }}</li>
+@endfor
+http://example-app.test/postCRUD
+
+//Forelse:
+// Caso especial, si hay usuarios los muestra en caso contrario muestra una alternativa
+//@forelse ($users as $user) 
+//	<li>{{ $user->name }}</li>
+//@empty
+//	<p>No users</p>
+//@endforelse
+
+// Obviamente también está el @continue @break
+//@foreach ($users as $user)
+//	@if ($user->type == 1)
+//		@continue
+//	@endif
+//	<li>{{ $user->name }}</li>
+//	@if ($user->number == 5)
+//		@break
+//	@endif
+//@endforeach
+
+//@foreach ($users as $user)
+//	@continue($user->type == 1)
+//	<li>{{ $user->name }}</li>
+//	@break
+//@endforeach
+
+
+// Por defecto, en los bucles, hay una variable $loop que se puede consultar. 
+
+$loop->index L'índex de la iteració del cicle actual (comença a 0).
+$loop->iteration La iteració del cicle actual (comença a 1).
+$loop->remaining Les iteracions que queden al cicle.
+$loop->count El nombre total d'elements de la matriu que s'iteren.
+$loop->first Si aquesta és la primera iteració a través del cicle.
+$loop->last Si aquesta és la darrera iteració del cicle.
+$loop->even Si és una iteració parell a través del cicle ($loop->odd/even nos permitiría pintar en formato zebra) 
+$loop->odd Si és una iteració senar a través del cicle ($loop->odd/even nos permitiría pintar en formato zebra)
+$loop->depth El nivell de nidament del bucle actual.
+$loop->parent Quan està en un bucle dins un altre bucle, la variable del bucle principal.
+
+// Hacemos un ejemplo en la index.blade.php de postCRUD
+// Vamos a enumerar las publicaciones y las categorías, 
+//	y así no tenemos que mostrar el 'id' ya que no tiene por qué ser consecutivo
+  
+    <table border='1'>
+        @foreach ($posts as $post)
+            <tr>
+                <td>{{ $post->id }} -- {{ $loop->index }}</td>
+                <td>{{ $post->title }}</td>
+                <td>{{ $post->posted }}</td>
+                <td>{{ $post->content }}</td>
+                <td>{{ $post->created_at }}</td>
+                <td>{{ $post->updated_at }}</td>
+                <td>
+                    <form action="{{route('postCRUD.destroy', ['postCRUD' => $post->id ])}}" method="POST">
+                        @method('DELETE') <!-- rectificamos method -->
+                        @csrf <!-- Security Token -->
+                        <button type="submit" class="btn tbn-danger btn-sm">Delete</button>
+                    </form> 
+                </td>
+            </tr>
+        @endforeach
+    </table>
+
+
+ <table border='1'>
+        @foreach ($categories as $category)
+            <tr>
+                <td>{{ $categroy->id }} -- {{ $loop->index }}</td>
+                <td>{{ $category->title }}</td>
+                <td>{{ $category->url_clean }}</td>
+                ... 
+            </tr>
+        @endforeach
+</table>
+
+
+http://<blog-app.test>/postCRUD
+http://<blog-app.test>/categoryCRUD
+
+
+///////////////////////////////////////////////////////////////////  COMPONENTES
+
+//////////////// ANONYMOUS COMPONENTS
+
+// Ejemplo de Component (Elementos de View rehusables)
+// A nivel de diseño los errores siempre deberían ser iguales, 
+//      el código de visualización de error siempre debería ser igual
+// 	    errores con mismo diseño independientemente del error, 
+//      así el usario sabrá identificar que hay error / warning. 
+// Entonces, podemos extraer el código de errores del create.blade.php 
+//      y ubicarlo en un apartado externo y llamarlo; será un ANONYMOUS COMPONENT
+// Un Componente nos permite tener elementos estandard 
+//      para poder mantenerlos de manera centralizada y reutilizarlos 
+//      (spoiler: Layout con Header / Footer de todas las páginas) 
+// Vamos a crear un código reutilizable para las plantillas que ya tenemos del CRUD, 
+//  creamos un ANONYMOUS COMPONENT
+
+// Recordar el sistema de errores que tenemos ahora del create.blade.php de Post y Category
+//	hacer alguna creación con error para recordar su funcionamiento
+//	ahora mismo el código que tenemos es como sigue:
+
+    <!-- Mostramos errores de una manera formal -->
+    @if ($errors->any())
+        <div class="alert alert-danger">
+            <ul>
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+http://<blog26.test>/postCRUD/create
+
+
+// Para extraerlo, en resources>view>components crear un fichero alert.blade.php (resources>view>components>alert.blade.php)
+// Extraer el código de errores del create.blade.php e insertarlo en este nuevo fichero
+//	insertarlo 'tal cual', no se modifica, quedaría así:
+
+@if ($errors->any())
+      <div class="alert alert-danger">
+          <ul>
+              @foreach ($errors->all() as $error)
+                  <li>{{ $error }}</li>
+              @endforeach
+          </ul>
+      </div>
+@endif
+
+// Y en el create.blade.php (del Post y Category?, donde había el código original, 
+//	codificar una llamada para incluir el código extraído 
+// Desde ambas View (Post y Category) se llamará al mismo Component
+// En general se podría extraer este código de mensages de error de todas las Views y 
+//	centralizarlo en este Component 
+
+// Comentar o eliminar el siguiente código 
+
+    <!-- Mostramos errores de una manera formal -->
+    <!-- Lo extraemos como Component reusable en resources/views/components/alert.blade.php 
+        @if ($errors->any())
+            <div class="alert alert-danger">
+                <ul>
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+    -->
+
+// Y añadir la llamada al Component de la siguiente manera:
+
+    <!-- Muestra la lista de errores mediante Component -->
+    @include('components.alert') 
+
+// Probar que desde la view se llama al nuevo componente de mensajes de error
+//	por ejemplo, pulsar el botón Crear dejando todo el form en blanco
+
+http://<example-app.test>/postCRUD/create
+http://<blog-app.test>/categoryCRUD/create
+
+// Ejercicio; aplicar la misma estrategia al edit.blade.php de Category y Post 
+http://<blog-app.test>/postCRUD/2/edit
+http://<blog-app.test>/categoryCRUD/2/edit
+
+
+// Ahora haremos un refinamiento importante: 
+
+// Creamos un nuevo ANONYMOUS COMPONENT denominado card-posts.blade.php y card-categories.blade.php
+// En la View de index.blade.php, para cada publicación y categoría, mostrarlo aplicando este Anonymous Component
+//	es una manera de reutilizar código de maquetación
+// 	es una manera muy sencilla de crear un Card (o maquetación tipo tarjeta) para cada elemento (publicación, categoría, etc.)
+// En general, cuando tengamos que mostrar una lista de elementos es buena estrategia crear un componente con 
+//	código para mostrar los distintos elementos en modo Card (tarjeta) y reutilizarlo.
+//	En este ejercicio solamente se usará para el index(), pero pensar que podríamos tener listados de elementos
+//	de varios puntos de menú (filtros, Listados de relaciones 1:N, etc) 
+
+// Para iterar y llamarlo, aplicaremos la siguiente estructura:
+// 	@each('components.cards-posts', $posts, 'post')
+//	@each('components.cards-categories', $categories, 'category')
+
+// Vamos a hacerlo paso a paso (es un buen ejemplo de Anonymous Component)
+//	NOTA: Es posible que existan problemas de renderización de Tailwindcss
+//	se explica una solución al final del ejemplo
+
+// Crear las siguientes sub View en 
+//	components>card-posts.blade.php
+//	components>card-categories.blade.php
+
+// Los componentes creados aplicarán una maquetación estándard que muestra la información de un única elemento
+//	en forma de tarjeta. Esta maquetación se puede alterar a voluntad según preferencias de cada uno
+//	La lógica es maquetar según necesidades un elemento y reaprovechar esta maquetación. 
+//	Se podría tener varios Components de maquetación del mismo elemento y llamarlo según necesidades
+//	Por ejemplo: Un Component muestra toda la info, otro Component maqueta mismo elemento pero solo parte de la info
+
+// No obstante, recordar que a nivel de Backoffice, se recomienda no esmerarse mucho en las presentaciones (maquetaciones), 
+//	se pretende un desarrollo rápido de pantallas dando peso a la funcionalidad y no a la estética
+//	En este paradigma de +Funcionalidad -Estética en Backoffice el concepto de rehuso de Component es ideal
+
+(Nota: Sería bueno cambiar los url-clean por enlaces http verdaderos) 
+
+
+// Código para Posts en card-posts.blade.php
+
+<div class="block rounded-lg bg-white shadow-secondary-1">
+    <div class="p-6 text-surface">
+        <h5 class="mb-2 text-xl font-medium leading-tight">{{ $post->title }}</h5>
+        <h3 class="mb-2 text-xl font-medium leading-tight">{{ $post->url_clean }}</h3>
+        <p class="mb-4 text-base">{{ $post->content }}</p>
+        <p class="mb-4 text-sm">posted: {{ $post->posted }}</p>
+        <p class="mb-4 text-sm">User Id: {{ $post->user_id }}</p>
+        <p class="mb-4 text-sm">category Id: {{ $post->category_id }}</p>
+        <p class="mb-4 text-sm">created at: {{ $post->created_at }}</p>
+        <p class="mb-4 text-sm">updated at: {{ $post->updated_at }}</p>
+        <a href="{{route('postCRUD.show' , ['postCRUD' => $post->id])}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+        <a href="{{route('postCRUD.edit' , ['postCRUD' => $post->id ])}}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+        <form action="{{route('postCRUD.destroy' , ['postCRUD' => $post->id ])}}" method="POST" class="float-right">
+           @method('DELETE')
+           @csrf
+           <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" >Delete</button>
+        </form>
+    </div>
+</div>
+
+
+// Código para Category en card-categories.blade.php
+
+<div class="block rounded-lg bg-white shadow-secondary-1">
+    <div class="p-6 text-surface " >
+        <h5 class="mb-2 text-xl font-medium leading-tight">{{ $category->title }}</h5>
+        <h3 class="mb-2 text-xl font-medium leading-tight">{{ $category->url_clean }}</h3>
+        <p class="mb-4 text-sm">created at: {{ $category->created_at }}</p>
+        <p class="mb-4 text-sm">updated at: {{ $category->updated_at }}</p>
+        <a href="{{route('categoryCRUD.show' , ['categoryCRUD' => $category->id])}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+        <a href="{{route('categoryCRUD.edit' , ['categoryCRUD' => $category->id])}}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+        <form action="{{route('categoryCRUD.destroy' , ['categoryCRUD' => $category->id ])}}" method="POST" class="float-right">
+           @method('DELETE')
+           @csrf
+           <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" >Delete</button>
+        </form>
+    </div>
+</div>
+
+
+// Y en el index.blade.php substituir el código HTML de la tabla (toda la tabla) que hay por lo siguiente:
+// 	realmente, estas líneas de código sería lo único que nos debería quedar en los index.blade.php
+
+    <!-- Se muestran los elementos en forma de Card -->
+    <div class="row row-cols-1 row-cols-md-3 g-4 ">
+        @each('components.card-posts',$posts,'post');
+    </div>
+
+    <!-- Se muestran los elementos en forma de Card -->
+    <div class="row row-cols-1 row-cols-md-3 g-4 ">
+        @each('components.card-categories',$categories,'category');
+    </div>
+
+// Probarlo llamando a 
+http://blog-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+
+// Observación (https://laravel.com/docs/11.x/blade#loops) 
+@each('view.name', $jobs, 'job')
+@each('view.name', $jobs, 'job', 'view.empty')
+The @each directive's first argument is the View to render for each element in the array or collection. 
+The second argument is the array or collection you wish to iterate over
+The third argument is the variable name that will be assigned to the current iteration within the View. 
+You may also pass a fourth argument to the @each directive; This last argument determines the view that will be rendered if the given array is empty.
+
+
+*********** (PROBLEMAS DE APLICACIÓN DE TAILWINDCSS / NO ES UN PROBLEMA; HAY QUE INCLUIRLO EXPRESAMENTE) 
+*********** HASTA QUE NO INTEGREMOS LAS VIEW CON EL BREEZE(Taliwindcss) NO VEREMOS TAILWINDCSS POR DEFECTO
+
+// Laravel NO aplica Tailwindcss de namer nativa
+//      la aplicación del Tailwindcss se debe "forzar" en el caso de generar nosotros las páginas HMTL 
+//      como es nuestro caso ahora mismo, y es lo hemos hecho hasta ahora. 
+// El Breeze (Starter Kit) usa Tailwindcss e incluye los links a Tailwindcss 
+// Cuando usemos el Layout que genera el Breeze, indirectamente, tendremos los links a Tailwindcss
+//      y se aplicará, pero ahora mismo, estamos en una estadio del proyecto en el que todavía no usamos 
+//	los Layout de Breeze, ni siquiera sabemos usar Layouts 
+// Por tanto, ahora mismo, hay que incuir los enlaces a las librerías de Tailwindcss en el HTML que estamos generando
+//      se hará de la siguiente manera; añadiendo lo siguiente en el <head> del HTML  
+//      @vite(['resources/css/app.css', 'resources/js/app.js'])
+// Ejemplo de inclusión de la cabezera:
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Index Category</title>
+
+    <!-- Scripts -->
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+
+// El script debería generar los siguientes enlaces
+//  (verlo en código fuente HTML)
+
+    <!-- Scripts -->
+    <link rel="preload" as="style" href="http://blog-app.test/build/assets/app-BFVlPjrh.css" />
+    <link rel="modulepreload" href="http://blog-app.test/build/assets/app-Cy98PJ2n.js" />
+    <link rel="stylesheet" href="http://blog-app.test/build/assets/app-BFVlPjrh.css" />
+    <script type="module" src="http://blog-app.test/build/assets/app-Cy98PJ2n.js"></script>  
+
+// Por último, recordar que Tailwindcss necesita una parseo y generación de clases 
+//  esto se consigue de dos maneras: 
+//	λ npm run build (para generar el fichero css final con las clases de Tailwind)
+//	λ npm run dev (para rastrear en real-time y generar el fichero css con las clases de Tailwindcss)
+
+npm run dev // Development environment, Starts a local server with "Hot Module Replacement" (instant updates without refreshing).
+		//Files: Assets stay in memory; nothing is written to the public folder.
+		// Requirement: You must keep the terminal window open while working.
+
+npm run build // Production or Staging environments, Generates static files in the public/build folder for deployment.
+		// Optimized for the end-user's load time.
+		// Files: Generates physical, minified files in public/build.
+		// Requirement: Run once before deploying.
+
+(Nota: Puede haber problemas para la versión de Node.js)
+### You are using Node.js 18.8.0. Vite requires Node.js version 20.19+ or 22.12+. Please upgrade your Node.js version.
+En tal caso es necesario instalar la última versión de Node.js (Node.js v24.12.0 (LTS)) 
+y activarla en laragon copiando directamente la carpeta y apuntando a ella. 
+Comprobarlo:
+
+C:\Users\bmesa>node -v
+v24.12.0
+
+C:\laragon\www\blog26
+λ node -v
+v24.12.0
+
+*****************************************************************  (FIN PROBLEMAS DE APLICACIÓN DE TAILWINDCSS) 
+
+
+// La directiva @each es muy interesante porque nos facilita un listado, o volcado completo, tratando uno a uno los elementos.  
+// Observar que en index.blade, bien hecho, nos quedaría una única linea en el <body> gracias a la directiva @each()
+// Observar que en la Card hemos añadido 2 nuevos enlaces; el de 'postCRUD.show' y 'postCRUD.edit' además del 'postCRUD.destroy' (que ya teníamos antes) 
+// El enlace DELETE recordar que hay que cambiar el method, el resto no hace falta, es el correcto. 
+// Probarlo todo; obtener el index de Categories y de Posts, y seleccionar algunos para ejecutar el show(), edit(), destroy(), etc.
+
+
+// Volvemos al Controller PostControllerCRUD.php y CategoryControllerCRUD
+// Recordar que en el index() hay una función all()
+
+    $posts = Post::all(); // Obtención de todos las publicaciones. 
+    return view('post.index',['posts' => $posts]); 
+
+    $categories = Category::all(); // Obtener todos los registros
+    return view('category.index',['categories' => $categories]); // Los mostramos con la View 
+
+// Si tenemos una gran cantidad de registros, el all() puede ser problemático. 
+//	nos hará un volcado masivo de información y puede saturar la pantalla
+// Laravel proporciona el paginate() que es una paginación automática
+// en el método index() del PostControllerCRUD y CategoryControllerCRUD cambiar el all() por:
+
+        $posts = Post::paginate(3); // Devuelve el resultado de 3 en 3 publicaciones
+
+        $categories = Category::paginate(3); // Devuelve el resultado de 3 en 3
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+//Probarlo ahora con un dd($posts) o mirando la consola si no borramos esa opción
+//	para indagar el contenido de posts o categories
+// 	Observar que contiene información para poder construir una paginación
+
+$posts = Post::paginate(3);
+dd($posts); 
+return view('post.index',['posts' => $posts]);
+
+  #items: 
+Illuminate\Database\Eloquent
+
+Collection {#1308 ▶}
+  #perPage: 3
+  #currentPage: 1
+  #path: "http://example-app.test/postCRUD"
+  #query: []
+  #fragment: null
+  #pageName: "page"
+  +onEachSide: 3
+  #options: array:2 [▶]
+  #total: 11
+  #lastPage: 4
+
+// Ahora, hay que construir la paginación en el index.blade.php de Category y de Post
+//	se puede hacer mediante funciones de Laravel y muestra una paginación por defecto
+//	para ello, tan sencillo como añadir el siguiente código:
+//	(Recordar eliminar el dd($posts); que vuelca info y aborta) 
+
+    <!-- Se muestran los elementos en forma de Card -->
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+        @each('components.card-posts',$posts,'post')
+        <!-- Paginación de resultados -->
+        {{ $posts->links() }}   
+    </div>
+
+    <!-- Se muestran los elementos en forma de Card -->
+    <div class="row row-cols-1 row-cols-md-3 g-4 ">
+        @each('components.card-categories',$categories,'category')
+        <!-- Paginación de resultados -->
+        {{ $categories->links() }}
+    </div>
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+// Podemos comprobar que ha generado los enlaces de Prev y Next junto con la info de la páginación
+Showing 7 to 9 of 11 results « Previous Next »
+
+// La paginación también se puede controlar manualmente porque tenemos información para ello
+//      como hemos visto en el dd($posts), pero de entrada, Laravel nos proporciona esta herramienta
+// Observación, se pueden cambiar los textos con el sistema multiidioma (no está por defecto) 
+
+
+//////////////// CLASS BASED COMPONENTS
+
+// Hemos creado Components para reutilizar código en la renderización del Front
+//	alert.blade -> Componente para mensajes de error o informaciónn
+//	card-categories.blade -> Componente para mostrar una Category
+//	card-posts.blade -> Componente para mostrar un Post
+//	Realmente son Components estáticos (Anonymous Components) partes del código de una View rehusable
+
+// También se puede crear componentes más sofisticados, que tienen como base una Class 
+// 	nos parmitirán poder pasar info adicional, esto nos da mucha más flexibilidad y potencia
+//	ya que nos permitirá renderizar dinámicamente.  
+
+// Resumen:
+// ANONYMOUS COMPONENTS (Componentes Anónimos) resources>views>components>xxx.blade.php 
+//	son los componentes que hemos creado hasta ahora, totalmente estáticos.
+// CLASS BASED COMPONENTS (Componentes Basados en una Clase) 
+//	que admiten paso de valores y poder rendeirzar de una manera más dinámica
+// 	se pueden crean con la terminal, y generan 2 ficheros
+
+// Creamos nuestro primer Clss Based Component
+
+λ php artisan make:component messages
+
+   INFO  Component [C:\laragon\www\blog-app\app\View\Components\messages.php] created successfully.
+   INFO  View [C:\laragon\www\blog-app\resources\views\components\messages.blade.php] created successfully.
+
+// Comprobarlo en: 
+app\View\Components\messages.php // Es un "class messages extends Component" con el código php estándard de un Component
+resources\views\components\messages.blade.php // Es una View vacía "con el mensaje del día"
+
+// En el Component Class, vemos que es una class con un __construct() 
+//	y tiene un render() que es la llamada a la View asociada messages.blade.php
+
+// Modificamos la View vacía que se ha generado en resources>views>components>messages.blade.php de la siguiente manera:
+
+<div class="alert alert-primary">
+    <h1 class="alert-heading" >¡Primary! Este es el título del mensaje</h1>
+    <p>Este es el texto del aviso primary. Puedes poner tantas líneas como necesites.</p>
+</div>
+
+
+// Como hemos creado un Component, lo podemos llamar de varias maneras
+//	aunque algún tipo llamada está restringido a Class Based Components (creados con el make) 
+//
+//	una manera:     
+//		@component('components.messages') @endcomponent
+//
+//	otra manera: 
+//		<x-messages />
+
+// Vamos al index.blade.php del post y categories (resources>views>post>index.blade.php) y añadir código:
+
+// En Post 
+     <!-- Llamada a un Class component -->
+    @component('components.messages') 
+    @endcomponent
+
+    <!-- Se muestran los elementos en forma de Card -->
+    <div class="row row-cols-1 row-cols-md-3 g-4 ">
+        @each('components.card-posts',$posts,'post');
+        {{ $posts->links() }} <!-- Paginación -->
+    </div>
+
+// En Category
+     <!-- Llamada a un class component -->
+    @component('components.messages') 
+    @endcomponent
+    
+    <!-- Se muestran los elementos en forma de Card mediante Componente Anónimo -->
+    <div class="row row-cols-1 row-cols-md-3 g-4 ">
+        @each('components.card-categories',$categories,'category');
+        {{ $categories->links() }} <!-- Paginación -->
+    </div>
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+
+// Otra manera de llamar al Component es como sigue:
+//	comentar o dejar la llamada anterior y codificar así
+
+    <!-- Llamada a un Class component -->
+    @component('components.messages') 
+    @endcomponent
+
+    <!-- Llamada a un Class component -->
+    <x-messages />
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+// Puede ser muy útil, porque tenemos el control del Component y podemos pasar datos y procesarlos
+// Ahora que hemos construído un Class Based Component, como son dinámicos,
+//	veamos cómo pasarle valores y tratar el valor en el Componente
+
+// Por ejemplo: 
+// Llamada a un Class Based Component con un parámetro:
+//
+//	<x-messages type="danger"/>
+// 
+//	@component('components.messages',['type' => 'danger'])
+//	@endcomponent
+//	
+// Este valor que se pasa deberá ser recibio en el constructor del Class Based Component, 
+//	obteneniendo el valor en public function __construct(public string $type)
+// 	Y luego, en el código de la plantilla o render lo modificaremos para tratar el valor
+//	<div class="alert alert-{{$type}}">
+//
+// Veámolo todo, y la llamada de las 2 formas:
+
+// En app>View>Components>messages.php 
+//	modificar el constructor de la siguiente manera:
+
+    public function __construct(public string $type)
+    {
+        //
+    }
+
+// En resources>view>post>index.blade.php
+//	llamar al Component con este nuevo valor
+//	mostramos las 2 maneras
+
+    <!-- Llamamos a un componente -->
+    <x-messages type="danger"/>
+
+    <!-- Llamamos a un componente -->
+    @component('components.messages',['type' => 'danger'])
+    @endcomponent
+
+// Finalmente tenemos que mostrar o utilizar este valor en la View
+//	en resources>views>components>messages.blade.php
+//	modificar la View para que renderize según el parámetro
+//	que estamos pasando en public function __construct(public string $type)
+
+<div class="alert alert-{{$type}}">
+    <h1 class="alert-heading" >¡{{$type}}! Este es el título del mensaje</h1>
+    <p>Este es el texto del aviso {{$type}}. Puedes poner tantas líneas como necesites.</p>
+</div>
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD    
+
+// Ojo, si da un error, es porque no comenta bien las llamdas anteriores
+//	borrar las líneas de las llamadas anteriores: 
+//	<!-- Llamada a un class component -->
+//	<!-- @component('components.messages') -->
+//	<!-- @endcomponent -->
+
+// Y aquí se plantearía un problema con las librerías CSS
+//	porque debería incluir este <div class="alert alert-danger">
+//	pero como es dinámico, si son clases Tailwind puede que no las incluya. 
+//	Tampoco tenemos configurado Bootstrap u otras librerías CSS. 
+//	Es un efecto colateral de la renderización dinámica
+//	Se puede subsanar forzando el mismo código en alguna View de soporte durante el desarrollo
+
+// Como hemos visto, podemos tener Views que son totalmente configurables
+// mediante el cocepto de Class Based Components
+
+//// En el Motor de Plantillas Blade hay un concepto denominado 'slots'
+// Podemos incluir estos 'slots' en las View, que serían partes del código html que se pasarán
+//
+// Ejemplo (mal hecho):
+//	Si hacemos el ejemplo anterior todo dinámico estaría obligados a definir nuevas variables, 
+//	tantas como sean necesarias:
+//
+//	<div class="alert alert-{{$alertType}}">
+//    		<h1 class="alert-"{{$alertHeading}}">{{$alertType}} {{$title}}</h1>
+//    		<p>{{$message}}</p>
+//	</div>
+//
+//	Necesitamos: $alertType, $alertHeading, $title, $message, etc. 
+//	y en el Constructor de la Class habría que tenerlo en cuenta y definirlas.  
+
+// El concepto de 'slots' nos permite hacerlo de otra manera, 
+//	usando el 'named slots' mediante <x-slot name="nombre_variable_que_paso">
+//	esto evita tener que definir cada una de las variables en el __construct()
+//
+// Probarlo de la siguiente manera :
+//	Lo haremos comenzando con algo sencillo y lo vamos mejorando 
+// Modificar la View de la siguiente manera:
+
+<div class="alert alert-{{$type}}">
+    <h1 class="alert-heading" >¡{{$type}}! {{$title}}</h1>
+    <p>Este es el texto del aviso {{$type}}. Puedes poner tantas líneas como necesites.</p>
+</div>
+
+// Y las llamadas serían de la siguiente manera
+
+    <!-- Llamada a un Class component -->
+    @component('components.messages',[
+        'type' => 'danger',
+        'title' => 'Este es el título del mensaje',
+        ]) 
+    @endcomponent 
+
+    <!-- Llamada a un Class component -->
+    <x-messages type="danger">
+        <x-slot name="title">
+            Este es el título del mensaje<br> 
+        </x-slot>
+    </x-messages>
+
+// Ya teníamos definido el $type en el Constructor, y no ha hecho falta definir el <x-slot name='type'>
+// 	el 'title' no lo hemos definido en el Constructor porque lo hemos indicado como 
+//	un <x-slot name=""> y lo hemos podido usar en la View
+
+// Entonces, la renderización de la View es totalmente configurable
+//	por ejemplo, hacer dos llamadas con valores diferentes
+//	(añadirlo para que haga también esta llamada)
+
+    <x-messages type="warning">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+    </x-messages>
+
+// Podemos redondearlo de la siguiente manera
+// 	modificar la View añadiendo un slot para el texto del aviso
+// Quedaría de la siguiente manera: 
+
+// La View del Class Based Component
+<div class="alert alert-{{$type}}">
+    <h1 class="alert-heading" >¡{{$type}}! {{$title}}</h1>
+    <div style="background-color:blue; color:chartreuse">
+        <p>{{$slot}}</p>
+    </div>   
+</div>
+
+// En {{$slot}} se ubicará todo aquello que no sea un 'named slot'
+//	Probarlo llamadolo de la siguiente manera
+
+    <x-messages type="warning">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+	Esto es el texto del aviso, este texto lo ubica en el slot del Component
+    </x-messages>
+
+
+// De esta manera en <x-messages> puedo incluir el código que desee que aparezca en la plantilla
+// 	por ejemplo, solo en caso de "danger" hacer un padding
+//	queda como sigue: 
+
+    <x-messages type="danger">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente
+        </div>
+    </x-messages>
+
+
+// y para el caso de la llamada con la otra forma 
+
+    <!-- Llamamos a un componente -->
+    @component('components.messages',['type' => 'warning'])
+        @slot('title','Esto es una alerta')
+        @slot('slot','Este texto lo mostrará donde haya puesto el slot en el componente')
+    @endcomponent 
+
+
+// En resumen, en los Class Based Component se pueden definir tantos $slot como se necesiten
+// 	se identifican con el name, en el ejemplo, tenemos name="title"
+//	si no están nombrados, es el $slot general 
+
+// Observar que ahora mismo tenemos un variable "type" en el Constructor, named slots "title", y el slot general 
+//	revisarlo tranquilamente, no es tan difícil de entender
+
+// Resumen de las llamadas que finalmente hemos hecho 
+
+    <!-- Llamada a un Class component -->
+    @component('components.messages',[
+        'type' => 'danger',
+        'title' => 'Este es el título del mensaje',
+        ]) 
+    @endcomponent 
+
+    <!-- Llamada a un Class component -->
+    <x-messages type="danger">
+        <x-slot name="title">
+            Este es el título del mensaje
+        </x-slot>
+    </x-messages>
+
+   <!-- Llamada a un Class component -->
+    <x-messages type="warning">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+    </x-messages>
+
+    <!-- Llamada a un Class component -->
+    <x-messages type="warning">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+	    Esto es el texto del aviso, este texto lo ubica en el slot del Component
+    </x-messages>
+
+    <x-messages type="danger">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente
+        </div>
+    </x-messages>
+
+    <!-- Llamamos a un componente -->
+    @component('components.messages',['type' => 'warning'])
+        @slot('title','Esto es una alerta')
+        @slot('slot','Este texto lo mostrará donde haya puesto el slot en el componente')
+    @endcomponent 
+
+// En este momento, tenemos dos Componente (Anonymous Component y Component Class Based) funcionando 
+//	refinamos el Anonymous Component
+// resources>views>components>messages.blade.php
+
+// Podemos añadir atributos nuevos, nos referimos a atributos de tags html
+// por ejemplo, podríamos escribir algo así:
+// 	<x-alert alert-type="danger" class="m-4" > 
+// 	Y Laravel nos proporciona una variable para poder recuperar estos atributos html 
+// 	<div class="alert alert-{{$alertType}} {{$attributes['class']}}"> // Es una lista de attributes y acceder a la Class 
+// 	<div {{$attributes->merge(['class' => 'alert alert-primary'])}}">
+
+
+// Veamos un ejemplo de esto:
+// En index.blade.php añadir el attribute style="background-color: coral" como sigue:
+
+// Original
+    <x-messages type="danger">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente
+        </div>
+    </x-messages>
+
+// Nuevo
+    <x-messages type="danger" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente, puedo incluir lo que quiera
+        </div>
+    </x-messages>
+
+// Y luego en message.blade.php, modificarlo para extraer y usar el attribute 'style' que acabamos de crear:
+//	se usa {{$attributes}}
+
+<!--La View del Class Based Component -->
+<div class="alert alert-{{$type}}" style="{{$attributes["style"]}}">
+    <h1 class="alert-heading" >¡{{$type}}! {{$title}}</h1>
+    <div style="background-color:blue; color:chartreuse">
+        <p>{{$slot}}</p>
+    </div>   
+</div>
+
+http://example-app.test/postCRUD
+
+// Lo llamamos con otros parámetros para comprobar su funcionamiento
+
+    <x-messages type="warning" style="background-color: coral">
+        <x-slot name="title">
+            Título de la alerta
+        </x-slot>
+        Este texto lo mostrará donde haya puesto el slot en el componente
+    </x-messages>
+
+    <x-messages type="danger" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        Este texto lo mostrará donde haya puesto el slot genérico en el componente
+    </x-messages>
+
+// Revisar el código que genera
+
+<div class="alert alert-warning" style="background-color: coral">
+    <h1 class="alert-heading">Esto es un Warning</h1>
+    <div style="background-color:blue; color:chartreuse">
+        <p>Este texto lo mostrará donde haya puesto el slot en el componente</p>
+    </div>    
+</div>   
+
+
+// Y todo esto significa, que tenemos el control desde el index.blade.php para modificar casi lo que quiera
+// Incluso puedo hacer (no se ha probado) un 'merge' para concatenar estilos
+// 	<div {{$attributes->merge(['class' => 'alert alert-primary'])}}">
+
+// Recordar que el Breeze, para que tenga un cierto diseño inicial, importa el Tailwind, 
+//	pero Laravel no lo tiene por defecto (lo veremos más adelante) 
+//	Y que en lugar de Tailwind puedes importar Bootstrap, o los dos, si lo necesitas. 
+
+
+************************************************************************
+// Ejercicio:
+// Recordamos los mensajes de error que tenemos en create.blade.php 
+//	llamábamos a un componente alert.blade.php
+// 	y le pasábamos unos errores por parámetro PHP, 
+//	ahora los podemos pasarlo como hemos visto 
+
+// Recordamos cómo lo tenemos condificado en crate.blade.php
+    <!-- Muestra la lista de errores mediante Component -->
+    @include('components.alert') 
+
+// Recordamos cómo lo tenemos codificado en components>alert.blade.php
+@if ($errors->any())
+      <div class="alert alert-danger">
+          <ul>
+              @foreach ($errors->all() as $error)
+                  <li>{{ $error }}</li>
+              @endforeach
+          </ul>
+      </div>
+@endif
+
+************************************************************************
+
+// Podemos usar variables para pasar valores a los componentes
+// 	se puede hacer dos maneras:
+//	una vez definida la variable @php $variable = 'valor'; @endphp
+//		se puede usar como type="{{$variables}}"
+//		o se puede usar como :type="$variables"
+// Ejemplo:
+
+// Cambiar las llamada de la siguiente manera
+
+    @php
+        $error = 'danger';
+    @endphp
+    
+    <x-messages type="{{$error}}" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente, puedo incluir lo que quiera
+        </div>
+    </x-messages>
+
+    @php
+        $error = 'warning';
+    @endphp
+
+    <x-messages :type="$error" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        Este texto lo mostrará donde haya puesto el slot en el componente
+    </x-messages>
+
+http://example-app.test/postCRUD
+
+
+/////// Vamos a ver más cosas sobre plantillas Blade 
+// Una de las grandes ventajas de utilizar las Class Based Componet
+// 	es que podemos crear métodos en la Class de las Class Based Component 
+//	para poderlos utilizar directamente en Blade
+// Por ejemplo, creamos un método adicional en la Class
+
+// En app>view\Components>messages.php crear un método 
+    public function majuscules($v) {
+
+        // Pasa a mayúsculas
+        return strtoupper($v); 
+    }
+
+<!--La View del Class Based Component -->
+<div class="alert alert-{{$type}}" style="{{$attributes["style"]}}">
+    <h1 class="alert-heading" >¡{{$type}}! {{$title}}</h1>
+    {{$majuscules($mayusculas)}}
+    <div style="background-color:blue; color:chartreuse">
+        <p>{{$slot}}</p>
+    </div>   
+</div>
+
+// Y incluirlo en las llamadas al Componente
+
+    <!-- Llamada a un Class component -->
+    @php
+        $error = 'danger';
+    @endphp
+    
+    <x-messages type="{{$error}}" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <x-slot name="mayusculas">
+            Esto estara en mayúsculas
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente, puedo incluir lo que quiera
+        </div>
+    </x-messages>
+
+    @php
+        $error = 'warning';
+    @endphp
+
+    <x-messages :type="$error" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <x-slot name="mayusculas">
+            Esto estara en mayúsculas
+        </x-slot>
+        Este texto lo mostrará donde haya puesto el slot en el componente
+    </x-messages>
+
+
+http://example-app.test/postCRUD
+http://blog-app.test/categoryCRUD
+
+// Y podemos crear todos los métodos que necesitemos. 
+// 	Nota: strtoupper($v); es una función de PHP, 
+//	podemos refactorizar usado directamente sin el método 
+//	se ha hecho de esta manera como ejemplo
+
+// Volviendo a los Anonymous Component, que son los que creamos al principio
+// Recordar el Anonymous Component en resources>views>components>alert.blade.php
+// Que ahora se invoca con el @include('components.alert') en create.blade.php
+// 	pero se podría invocar también con <x-alert /> y aplicar mismos criterios
+//	obviamente, al no ser un Class Based Componet no podemos crear métodos
+// Probarlo así, comentando el include original (create.blade.php)
+
+    <!-- Mostramos la lista de errores -->
+    <!-- @include('components.alert')  -->
+    <x-alert />
+
+http://example-app.test/postCRUD/create
+http://blog-app.test/categoryCRUD/create
+
+
+////////////////  DYNAMIC COMPONENTS
+
+////  Los DC son algo interesante a nivel de estructura, pero que requiere de un buen análisis
+////  Supongamos que es necesario renderizar un Component, pero no sabemos cuál será porque depende de la ejecución
+////  Para ello tenemos el Dynamic-Component que representa el Component en función de un valor en tiempo de ejecución
+
+// Ejemplo: 
+// 	Suponemos que el mensaje Success, Warning y Error tienen una estructura y renderización diferente 
+//	en tal caso podemos utilizar un Dynamic-Component
+// 	la invocación es mediante <x-dynamic-component :component="$componentName" > 
+
+*************************
+// En index.blade.php añadir el siguiente código
+//	ahora mismo estamos llamando a un Component 
+//	que se denomina 'alert' por alert.blade.php
+//	veamos que se podría llamar dinamicamente
+
+// Hagamos una prueba de esto con un Dynamic-Component
+// Añadir este código en index.blade.php antes de los <x-messages> ya creados 
+// Todos los ejemplos juntos (hay 2 llamadas)
+
+    <!-- Llamada a un Class component -->
+
+    <!-- determinamos qué componente usar -->
+    @php
+        $componentName = "messages";
+    @endphp
+
+    <!-- Variable para tipo de error -->    
+    @php
+        $error = 'danger';
+    @endphp
+
+    <x-dynamic-component :component="$componentName" type="{{$error}}" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <x-slot name="mayusculas">
+            Esto estara en mayúsculas
+        </x-slot>
+        <div style="padding: 40px">
+            Este texto lo mostrará donde haya puesto el slot en el componente, puedo incluir lo que quiera
+        </div>
+    </x-messages>
+
+    <!-- Variable para tipo de error -->
+    @php
+        $error = 'warning';
+    @endphp
+
+    <x-dynamic-component :component="$componentName" :type="$error" type="{{$error}}" style="background-color: coral">
+        <x-slot name="title">
+          Este es el título de la alerta
+        </x-slot>
+        <x-slot name="mayusculas">
+            Esto estara en mayúsculas
+        </x-slot>
+        Este texto lo mostrará donde haya puesto el slot en el componente
+    </x-messages>
+
+http://example-app.test/postCRUD
+
+
+// Esta estrategira va bien cuando no sabemos qué tipo de Component necesitaremos
+//      Ej: Si tenemos una web de venta de libros; se muestra la presentación del libro con un Component con resumen del libro y una foto
+//      Ej: Si es otro producto, por ejemplo una revsita que no tenga foto, la presentación con un Component que solo renderiza la descripción, etc. 
+// Se identifica el Component y renderiza un Dinamic-Component u otro. 
+
+// Vamos a ver si podemos hacer otro ejemplo con el <x-dynamic-component :component="$componentName" >
+// 	no es un tema trivial, hay que tenerlo bien claro para usarlo, requiere de un análisis
+
+// Creamos el resources>views>components>success.blade.php que sea copia del alert.blade.php
+//	recordar que el alert.balde.php es un Anonymous Component, por tanto, no se crea con el terminal 
+// Substituimos el código por este sencillo código: 
+
+<h1>Ha anat bé, todo OK</h1>
+
+// Ahora, en create.blade.php revisamos el código y vemos que tenemos el siguiente
+// 	código de pruebas anteriores
+
+    <!-- Mostramos la lista de errores -->
+    <!-- @include('components.alert')  -->
+    <x-alert />
+
+// Lo quitamos (comentamos) y añadimos lo siguiente:
+//	Si genera errores, quiero que carge el Component de "alert" original
+//	Si no hay errores, quiero que me carge el nuevo Component de "success"
+// Se podría mejorar, pero en create.blade.php (observación, no llamará nunca el success porque 
+// 	en su momento forzamos que saltara al index())
+// queda así :
+
+    <!-- Mostramos la lista de errores -->
+    <!-- @include('components.alert')  -->
+    <!-- <x-alert /> -->
+
+    @php 
+        $componentName = ''; 
+        if ($errors->any()) {
+            $componentName = 'alert'; 
+        } else {
+            $componentName = 'success'; 
+        }
+    @endphp 
+
+    <x-dynamic-component :component="$componentName">
+    </x-dynamic-component>
+
+http://<example-app.test>/categoryCRUD/create
+http://<example-app.test>/postCRUD/create
+
+// Con lo anterior se ve la idea o el concepto de este <x-dynamic-component :component="$componentName">
+// No obstante, como metodología de trabajo, es mejor hacer un único Component "menssages" y pasarle los mensajes 
+// Hemos hecho ejemplo de un Dynamic Component y controlarlo de manera "dinámica" en la llamada. 
+
+
+// Resumen : 
+// ANONYMOUS COMPONENTS -> Adecuados para reutilizar bloques de código en Front
+// CLASS BASED COMPONENTS -> Adecuados para pasar valores y renderizar según estos valores (evolución de los Anonymous Components)
+// DYNAMIC COMPONENTS -> Adecuados para usar un u otro Component dependiendo de valores en ejecución (evolución de los Class Based)
+
+
+///////////////////////////////////////////// LAYOUT
+
+
+//// Para acabar, veremos lo que son las plantillas o LAYOUT
+// La mayoría de webs mantiene un diseño similar en diferentes páginas,
+//  	esto es muy común para mantener un diseño coherente a lo largo de todo el website
+//	y para que el usuario no tenga que "descubrir" la estructura y organización de la información
+//	que le ofrecemos en nuestro website (Diseño de Interfaces Web)
+// La coherencia de diseño se puede gestionar mediante los Layout 
+// La idea es definir un solo Component Blade y después reutilizarlo en toda la web. 
+// Laravel (y el Breeze) genera unos Layout por defecto en
+//	resources>views>layouts 
+//	y en estos layouts es donde se incluirán las librerías generales; Bootstrap, Tailwindcss, etc. 
+
+// Fijarse un poco en el contenido de app.blade.php;
+//	que sería, por decirlo de algún modo, el HTML superior, la página de más arriba
+//	ver como existe el <!DOCTYPE html>, <html lang="..."> <head> 
+//	en este <head> están los <meta..>, <links...>, y las librerías de Tailwindcss (incluídas por el Breeze) en @vite(...)
+//	todos estos 'tag' serían los de una página 'padre' para un proyecto Laravel.
+//	Si en lugar de Tailwindcss, que lo ha añadido el Breeze, quisiéramos Bootstrap, se cambiaría aquí (o crear un layout padre nuevo y llamarlo)
+//
+//	en el <body> de este Layout fijarse que hay un <div class="min-h-screen bg-gray-100"> que lo incluiría todo en fondo gris
+//	también el @include('layouts.navigation') que serán los menú del proyecto (luego lo usaremos para nuestro menú)
+//	ver los menús de ahora en  http://<blog-app.test>/dashboard y revisar responsividad (recordar que hay que loginearse) 
+//	luego hay un @isset($header) que controla si existe un header (o parte superior de la página), y lo renderizaría 
+//	Finalmente hay un <main> donde se mostrarían nuestros dato, o nuestra renderización, que usa un {{ $slot }}
+//	En definitiva es un "esqueleto" de layot que ofrece Laravel. 
+
+// Veamos un ejemplo, veamos cómo construye la página de Dashboard
+//	Analizar el resources>views>dashboard.blade.php
+//	llama al <x-app-layout> (que genera la página principal) 
+//	luego tiene un <x-slot name="header">, que hemos visto que se puede poner o no con @isset($header)
+//	y luego el <div class="py-12"> que se renderizaría en {{ $slot }} y sería nuestra parte
+//
+//	Hacer una prueba, eliminado (luego volverlo a poner) de dashboard.blade.php todo el tag <x-slot name="header">
+//	recargar el http://blog-app.test/dashboard, y comprobar que ahora no hay cabecera. 
+//
+//	Observar que los literales se están escribiendo en un formato específico 
+//	__('Dashboard'), __("You're logged in!")
+//	está pensado para multiidioma, que funciona bajo una traducción de literales mediante "i18n" (JSON de traducción)
+//	no obstante, hay que configurarlo, Laravel no lo trae por defecto. 
+
+
+////////////////// APLICANDO MAQUETACIÓN DEFINITIVA ///////////////////////
+///////////////// (Recordar hacer backup de ficheros actuales para tener ejemplos) 
+
+// Vamos a pintar bonito ya, y de una vez por todas, aplicando diseño definitivo y los Layout por defecto que tenemos ahora (Breeze)
+// Este es el diseño que se exigirá para el BackOffice del proyecto, todos el mismo
+
+// Para comenzar, dejaremos los fichero siguientes con solo lo necesario 
+//	OJO: Copiaremos los originales para no perderlos y tener todos los ejemplos vistos
+//	resources>view>post>index.blade.php (duplicar a) resources>view>post>index.blade_old.php
+//	resources>view>category>index.blade.php (duplicar a) resources>view>category>index_old.blade.php
+//	Una vez hecha las copias para guardar los ejemplos, ahora copiamos el contenido de 
+//	resources>views>dashboard.blade.php a resources>view>post>index.blade.php y a resources>view>category>index.blade.php
+// 	y los modificaremos levemente:
+//
+// 	OJO: A partir de ahora, estermos utilizando app.blade.php como página html 'padre' en la que incluiremos
+//	nuestra información. Por tanto, recordar hacer login (bmesabater@gmail.com 12345678), en caso contrario puede que no funcionen las rutas 
+
+
+////////// INDEX
+
+
+// Para Posts en post>index.blade.php (asegurarse haber creado una copia con el original en index.blade_old.php)
+// Analizar un poco que hace: hay llamada llama al <x-app-layout>, tenemos un <x-slot name="header">
+//  luego tenemos un <div class="py-12"> que sería el "slot"
+
+<x-app-layout>
+
+    <!-- Header de listado de Posts -->
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Listado de Publicaciones') }}
+        </h2>
+    </x-slot>
+
+    <!-- Listado de Posts -->
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+
+                    <!-- Se muestran los elementos en forma de Card -->
+                    @each('components.card-posts',$posts,'post')
+                    {{ $posts->links() }} <!-- Paginación -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</x-app-layout>
+
+// Para Categories en category>index.blade.php (asegurarse haber creado una copia con el original en index.blade_old.php)
+<x-app-layout>
+
+        <!-- Header de listado de Categories -->
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Listado de Categorías') }}
+        </h2>
+    </x-slot>
+
+        <!-- Listado de Categories -->
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+                    
+                    <!-- Se muestran los elementos en forma de Card -->
+                    @each('components.card-categories',$categories,'category') <!-- Listado de Categorías -->
+                    {{ $categories->links() }} <!-- Paginación -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</x-app-layout>
+
+// Probarlo (recordar npm run build / dev) 
+http://blog-app.test/postCRUD
+http://example-app.test/categoryCRUD
+
+// Si no se ve correctamente el problema está en el Tailwindcss, debe compilarse, si no no funcionará bien. 
+// Cada vez que hacemos algún cambio de CSS, el Tailwindcss debe recompilarse
+// public>build>assests están los ficheros CSS generados para Tailwindcss
+// Podemos generar el archivo de Class mediante el teminal
+
+λ npm run build 
+
+	> build
+	> vite build
+
+	vite v5.4.4 building for production...
+	✓ 54 modules transformed.
+	public/build/manifest.json             0.27 kB │ gzip:  0.14 kB
+	public/build/assets/app-CvS0jiOV.css  39.99 kB │ gzip:  7.46 kB
+	public/build/assets/app-DLXkxiZ3.js   79.44 kB │ gzip: 29.58 kB
+	✓ built in 1.68s
+
+λ npm run dev (para rastrear de manera continua, aunque no es optimo, usarlo durante el desarrollo y al final aplicar un build)  
+
+// Así y todo, puede que haya problemas para mostrar el texto (eliminar las referencias a modo dark, puede dar problemas) 
+
+// Lo que ocurre ahora, es que en el campo content, a consecuencias del factory, hay un montón de código html metido el algunos registros. 
+// Se deberían borrar o actualizar estos registros para que se muestren solamente contenido textual sin tags (No lo hacemos por ahora)
+//	lo que haremos después será aplicar un editor (CKEditor) para los textarea que nos permita formatear al texto (negrita, subrayado, etc.)
+//	No obstante se observa que con la versión 12 que estamos usando se aplica automáticamente un filtro para mostrar y no interpretar 
+//	el código (si no lo lo aplica habrá que sanitizarlo manualmente)
+
+// Vamos a cambiar algo, el botón DELETE en rojo de la siguiente manera 
+//	en el card-posts.blade.php y en el card-categories.blade.php
+//	el objetivo es comprobar si se actualiza automáticamente o hay que forzarlo 
+
+// Original
+<button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" >Delete</button
+
+// Nuevo 
+<button type="submit" class="bg-gradient-to-r from-red-100 to-red-500 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded" >Delete</button>
+
+// Y puede no funcionar porque lo tienes que volver a recompilar para que el Tailwindcss se aplique
+// Cada vez que tocas algo del css hay que volver a compilar 
+λ npm run build
+
+// Esto no es práctico, por lo que tenemos el 
+λ npm run dev
+
+// Que constántemente monitoriza cambios del Blade y lo recompila 
+// La DESVENTAJA, es que no genera un css minimizado, pero es muy útil durante el desarrollo
+// Al final del desarrollo, cuando ya se considera estable, 
+//	entonces aplicar el 'run build' para que genere un CSS minimizado 
+// Probarlo cambiando el color del SHOW en un verde degradado sin recompilar
+
+λ npm run dev
+
+// Original 
+ <a href="{{route('categoryCRUD.show' , ['categoryCRUD' => $category->id])}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+
+// Nuevo 
+ <a href="{{route('categoryCRUD.show' , ['categoryCRUD' => $category->id])}}" class="bg-gradient-to-r from-green-500 to-green-700 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+
+// Volver a los originales, tanto del botón Delete como del botón Show, 
+//  no aplicaremos degradados en el diseño final, solo colores uniformes. 
+
+
+////////// SHOW
+
+// Veamos ahora las otras presentaciones, vamos también a ponerlo bonito de una vez por todas
+//	y con el diseño que deberá tener nuestro BackOffice
+// Pulsar sobre "Show" sobre un elemento del listado, a ver cómo se muestra : Obviamente, ahora 
+//	no sigue el diseño del listado, que vamos a tomar como el estándard, queremos uniformidad  
+
+//	Hacer copia del original show.blade.php (para tener los ejemplos de lo visto) 
+//	resources>views>post>show.blade.php copiar a resources>views>post>show.blade_old.php
+//	resources>views>category>show.blade.php copiar a resources>views>category>show.blade_old.php
+
+// Copiamos el index.blade.php y lo empastamos en el show.blade.php 
+
+// El show.blade.php quedaría de la siguiente manera:
+// 	(También he tenido que arreglar alguna cosilla, a consecuencia del dark (modo oscuro)) 
+// 	(He tenido que eliminar el dark:text-gray-200 y el dark:text-gray-100 y el dark:bg-gray-800)
+//	Me queda así el show.blade.php:
+// Observar cómo llamamos al componente  <x-card-posts :post="$post" />
+// Observar cómo llamamos al componente  <x-card-categories :category="$category" />
+// Observar             {{ __('Show Publicación :') }} {{ $post->title  }}
+// Observar             {{ __('Show Category :') }}  {{ $category->title  }}
+
+// Para Posts 
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Show Publicación :') }} {{ $post->title  }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+                    <x-card-posts :post="$post" />
+                </div>
+            </div>
+        </div>
+    </div>
+</x-app-layout>
+
+
+// Para Category
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Show Category :') }}  {{ $category->title  }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+                    <x-card-categories :category="$category" />
+                </div>
+            </div>
+        </div>
+    </div>
+</x-app-layout>
+
+// Probarlo 
+http://blog-app.test/postCRUD/1
+http://blog-app.test/categoryCRUD/1
+
+// El Show muestra el botón de Show, lo suyo sería crear un Component dinámico para evitar este botón
+// 	para que aparezca o no según sea el caso, o que aparezca desactivado.  
+//	Se deja como ejercicio. 
+
+
+////////// CREATE
+
+// Ahora pulsamos el botón Edit desde el Show o desde el listado, y no se muestra según el estilo
+// Procedemos de la misma manera, primero con el Create:
+
+//	Hacer copia del original create.blade.php para tener ejemplos de lo visto
+//	resources>views>post>create.blade.php copiar a resources>views>post>create.blade_old.php
+//	resources>views>category>create.blade.php copiar a resources>views>category>create.blade_old.php
+//	
+// Los limpiamos de todo los ejemplos que hemos hecho y queda así:
+
+// Para Post (Ojo, observar que renderizamos el postes yes / not) 
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Crear una Publicación') }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 ">
+                    
+                    <form action="{{ route('postCRUD.store') }}" method="post">
+                        @csrf  <!-- Security Token -->
+
+                        <div class="mb-3">
+                            <label for="title">Título</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('title') border-color:RED; @enderror" name="title" />
+                            @error('title')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="url_clean">Url Clean</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('url_clean') border-color:RED; @enderror" name="url_clean" />
+                            @error('url_clean')
+                                <div>{{$message}}</div>
+                            @enderror                  
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="content">Contingut</label>
+                            <textarea style="@error('content') border-color:RED; @enderror" name="content" col="3" class="mt-1 block w-full"></textarea>
+                            @error('content')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="posted" class="form-label">Publicat</label>
+                            <select name="posted" class="mt-1 block w-full">
+                                <option value="yes">Si</option>
+                                <option value="not">No</option>
+                            </select>
+                        </div>
+                       
+                        <div>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Crear</button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</x-app-layout>
+
+// Para Category
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Crear una Categoria') }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 ">
+                    
+                    <form action="{{ route('categoryCRUD.store') }}" method="post">
+                        @csrf  <!-- Security Token -->
+
+                        <div class="mb-3">
+                            <label for="title">Título</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('title') border-color:RED; @enderror" name="title" />
+                            @error('title')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="url_clean">Url Clean</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('url_clean') border-color:RED; @enderror" name="url_clean" />
+                            @error('url_clean')
+                                <div>{{$message}}</div>
+                            @enderror                  
+                        </div>
+
+                        <div>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Crear</button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</x-app-layout>
+
+// Probarlo creando algún nuevo elemento con y sin errores
+// Recordar que ahora mismo el 'user_id' y 'category_id' del post se añaden en 
+// 	la store() del PostControllerCRUD mediante función random():
+//	$post->user_id = User::all()->random()->id; // Para que la FK user_id funcione, elegimos al azar
+//	$post->category_id = Category::all()->random()->id; // Para que la FK category_id funcione, elegimos al azar
+
+
+//////////   EDIT 
+
+// Vamos ahora con el Edit
+//	Hacer copia del original edit.blade.php para tener ejemplos de lo visto
+//	resources>views>post>edit.blade.php copiar a resources>views>post>edit.blade_old.php
+//	resources>views>category>edit.blade.php copiar a resources>views>category>edit.blade_old.php
+
+// Para Post 
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Editar Publicación :') }}  {{ $post->title  }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 ">
+
+                    <form action="{{ route('postCRUD.update', ['postCRUD' => $post->id ]) }}" method="post">
+
+                        @csrf
+                        @method('PUT') 
+
+                        <div class="mb-3">
+                            <label for="title">Títol</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('title') border-color:RED; @enderror" value="{{ $post->title }}" name="title" />
+                            @error('title')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="url_clean">Url neta</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('title') border-color:RED; @enderror" value="{{$post->url_clean}}" name="url_clean" />
+                            @error('url_clean')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+                       
+                        <div class="mb-3">
+                            <label for="content">Content</label>
+                            <textarea style="@error('content') border-color:RED; @enderror" name="content" col="3" class="mt-1 block w-full">{{$post->content}}</textarea>
+                            @error('content')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Actualizar</button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</x-app-layout>
+
+
+// Para Category 
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Editar Categoria :') }}  {{ $category->title  }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 ">
+                    <form action="{{ route('categoryCRUD.update', ['categoryCRUD' => $category->id ]) }}" method="post">
+                        @csrf
+                        @method('PUT') 
+
+                        <div class="mb-3">
+                            <label for="title">Títol</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('title') border-color:RED; @enderror" value="{{$category->title}}" name="title" />
+                            @error('title')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="url_clean">Url neta</label>
+                            <input type="text" class="mt-1 block w-full" style="@error('url_clean') border-color:RED; @enderror" value="{{$category->url_clean}}" name="url_clean" />
+                            @error('url_clean')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+                       
+                        <div>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Actualizar</button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</x-app-layout>
+
+// Probarlo todo; Create, Show, Edit, Listado, etc. 
+
+
+// Nos queda un detalle bastante importante, habría que crear las rutas
+// 	ahora mismo, cuando entramos solo vemos Dashboard y nada más 
+// Luego crearemos una navegación para evitar tener que teclear las rutas.
+
+// Intentamos crear algún registro con un error. 
+//	genera un error, se muestra ok, pero borra la información que se ha tecleado 
+// Esto también lo veremos más adelante, se modifica el create.blade.php
+
+
+////////////////////////////////////////////   FIN DEL TEMA (Falta la navegación y algunos detalles de presentación) 

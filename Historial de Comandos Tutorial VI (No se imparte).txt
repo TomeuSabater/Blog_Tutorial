@@ -1,0 +1,1165 @@
+////////////////////////////////////////////////////////////////////
+Clase 7 de día 18/Sept/2024
+
+API Rest / API Controllers  / API Resources / API Authentication
+
+//////////////////////////////////////////////////////////////////////
+
+// La explicación sobre el API comienza en el 15:00
+// Desde 00:00 hasta 15:00 es la corrección al Middleware del día 17 que no conseguíamos hacerlo funcionar correctamente
+
+λ cd example-app\
+λ npm run dev
+
+//// Representational State Transfer (transferència d'estat representacional)
+//// Entre dues trucades qualsevol, el servei no desa les dades. 
+//// Per exemple, podem autenticar un usuari amb email i contrasenya en una trucada
+//// 	però la següent que fem ja s'haurà oblidat de l'anterior petició d'autenticació.
+//// Para solventar la falta de "sesión" en la petición se devuelve un "token" que se tendrá que pasar en cada petición
+//// El servidor no tiene "status" de las peticiones, cada petición es única 
+
+// Sense estat (Stateless): Cada sol·licitud del client al servidor ha de contenir tota la informació necessària per processar-la. 
+// 	El servidor no manté cap estat de la sessió entre sol·licituds.
+// Interfície uniforme: L'API ha de tenir una interfície uniforme que permeti accedir als recursos de manera coherent i previsible. 
+//	Per exemple, es fan servir els mètodes HTTP per interactuar amb els recursos: GET, POST, PUT i DELETE (no hi ha més mètodes)
+// Codis de resposta HTTP: Una API RESTful ha de fer servir els codis de resposta HTTP adequats per indicar l'estat de la sol·licitud, per exemple:
+//	200-'OK'
+// 	404-'Not Found'
+// 	500-'Internal Server Error'
+// En el context d'APIs RESTful, la comunicació es basa en el protocol HTTP i segueix els següents principis CRUD:
+// 	GET: per obtenir dades: 'select'
+// 	POST: per crear noves dades: 'insert'
+// 	PUT/PATCH: per actualitzar dades: 'update'
+// 	DELETE: per eliminar dades: 'delete'
+
+// En Laravel 11 no hay por defecto un sistema API/REST y se tiene que instalar, 
+// 	tener en cuenta que la instalación tarda un poco
+// Esto también instala el "laravel/sanctum", que es el sistema que usa Laravel 11 para la autenticación con api
+
+λ php artisan install:api
+
+// La instalación incluye bastantes cosas
+// Y durante el proceso de instalación NECESITAMOS hacer una migración: confirmamos con yes
+
+One new database migration has been published. Would you like to run all pending database migrations? (yes/no) [yes]:
+2024_11_26_171433_create_personal_access_tokens_table
+
+// La instal·lació de 'Sanctum' executa les següents passes:
+// 	El paquet 'Sanctum' està present a 'config/sanctum.php'.  
+// 	També es pot comprovar la seva instal·lació en l'arxiu: '/composer.json'.
+// També es crea la taula 'personal_access_tokens' necessària per emmagatzemar els accessos dels usuaris i els seus tokens. 
+//	buscarla en la DDBB, añade un token que dura 60'
+
+// Postman vs Thunder Client
+// Se puede instalar el Postman, pero también se puede utilizar el VS para utilizar un cliente Api Rest
+// Instalar el Thunder Client en VS y no necesitarás el Postman (Extensions en VS y buscar el Thunder Client)
+
+// Recordar que los GET se pueden hacer directamente sobre el navegador, para un test rápido
+// El POST podremos probarlo desde el VS, especificando los parámetros
+
+// La instalación ha generado 
+// 	routes>api.php, config>sanctum.php, en bootstrap>app.php ha añadido cosas, etc. 
+
+// En routes>api.php observamos que existe el 
+middleware('auth:sanctum')
+
+// que espera un token válido en la tabla de tokes recién creada
+
+// en bootstrap>app.php ha incluído una ruta  
+api: __DIR__.'/../routes/api.php',
+
+// Hay que saber que todo lo que "cuelga" de api tendrá un prefijo que será /api
+// Si queremos cambiar este prefijo accedemos a bootstrap>app.php cambia este código 
+// 	así incluímos de manera explícita el prefijo 'api' en todas las rutas. 
+
+    ->withRouting(
+        using: function () {
+                Route::middleware('api')
+                    ->prefix('api')
+                    ->group(base_path('routes/api.php'));
+                Route::middleware('web')
+                    ->group(base_path('routes/web.php'));
+        },
+    )
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->api("throttle:api");
+    })
+
+// Lo anterior se lleva a cabo para controlar mejor las rutas, lo hacemos para poder modificar las rutas, en el original no se puede
+// Si dejamos por defecto, la ruta es la que es, con '/api', si quieres cambiar prefijo, se especifica como este ejemplo
+// por ejemplo, cambiando ->prefix('apiProves'), habría que indicar esa dirección con ese prefijo 
+
+// Con lo anterior ya tenemos la instalación del api
+// Como tenemos los 'post' ya creado del entorno 'web' 
+
+// Per gestionar la validació de l'usuari, 'Sanctum' segueix una sèrie de passos que convé conèixer:
+// 	Inici de sessió: es genera un token personal únic associat a l'usuari i s'emmagatzema en la taula que queda en la taula 'personal_access_tokens'
+//	Inclusió del token en les peticions: el client ha d'incloure el token en el header de les peticions HTTP, això assegura que cada petició al servidor 
+//		conté les credencials de l'usuari per a la validació.
+// 	Verificació del token: Laravel Sanctum llegeix i verifica el token per cada petició protegida. 
+//		Es comprova si el token existeix, si és vàlid, i si està associat a un usuari en concret. 
+//		Aquesta validació es fa automàticament mitjançant el middleware 'auth:sanctum' a les rutes de l'API.
+//	Comprovació de permisos (capacitats): Si s’han definit permisos específics per al token (capacitats), Sanctum verifica que el token permet les accions requerides en aquella ruta. 
+//		Això es pot configurar per limitar les accions que un usuari pot fer amb cada token.
+//	Accés o denegació: Si el token és vàlid i els permisos són suficients, l'usuari tindrà accés a la ruta sol·licitada. 
+//		Si el token no és vàlid o no té els permisos necessaris, Sanctum denegarà l’accés i retornarà una resposta d'error.
+//	Aquest procés permet gestionar una autenticació segura i robusta amb un mínim de complexitat i sense la necessitat de gestionar cookies o sessions persistents.
+
+
+// Se recomienda SEPARAR los Controladores de la Web de los de la Api
+// Incluir toda la lógica del API en el PostcontrollerCRUD sería inmanejable
+// Y creamos YA un controlador para API. 
+
+λ php artisan make:controller Api/PostController --api
+
+// Indagar en app>Http>Controllers>Api>PostController.php
+// Vemos que hay los métodos, index(), show(), store(), update(), destroy() 
+// No ha creado ni el create(), ni el edit(): 
+//	porque no es necesario 'pintar' la página de creación create() del formulario, será directamente store(), en Web pintas página para imputar los datos
+// 	y tampoco necesitamos el edit(), iremos directamente al update(), en Web primero lo pintas para editarlo y luego updatarlo 
+
+// Ahora el acceso a cada método 'http' se hace desde el archivo 
+// 	routes>api.php (recuerda el import de PostController de API) añadiendo:
+
+Route::get('/user', function (Request $request) {
+    return $request->user();
+});
+
+Route::resource('/post', PostController::class);  // Contempla todos los métodos a la vez
+
+// Probarlo desde el navegador, no hace nada, pero tampoco da un error
+http://<example-app>.test/api/post/user
+
+// Y consultamos las rutas para cercionarnos de que están creadas
+
+λ php artisan route:list // también con λ php artisan r:l
+
+// Y observamos las siguientes rutas generadas
+GET|HEAD        api/post .......................................... post.index › Api\PostController@index
+POST            api/post .......................................... post.store › Api\PostController@store
+GET|HEAD        api/post/create ................................. post.create › Api\PostController@create
+GET|HEAD        api/post/{post} ..................................... post.show › Api\PostController@show
+PUT|PATCH       api/post/{post} ................................. post.update › Api\PostController@update
+DELETE          api/post/{post} ............................... post.destroy › Api\PostController@destroy
+GET|HEAD        api/post/{post}/edit ................................ post.edit › Api\PostController@edit
+GET|HEAD        api/user ................................................................................
+
+// Y ha generado la del GET del create y la del GET del edit 
+// son endpoints que no hacen nada, no haremos nada con ello, y además genera un error, verlo con:
+http://<example-app>.test/api/post/create
+
+// Tenemos dos maneras de solucionar que estos enpoints no generen un error
+
+// Simplemente en routes>api.php cambiar el siguiente código por 'apiResource'
+Antiguo Route::resource('/post', PostController::class); 
+Nuevo Route::apiResource('/post', PostController::class); 
+
+// Y se olvida de las url que no sirven para api
+// comprobarlo generando otra vez la rutas, no habrá ni 'create' ni 'edit'
+λ php artisan r:l
+
+GET|HEAD        api/post .......................................... post.index › Api\PostController@index
+POST            api/post .......................................... post.store › Api\PostController@store
+GET|HEAD        api/post/{post} ..................................... post.show › Api\PostController@show
+PUT|PATCH       api/post/{post} ................................. post.update › Api\PostController@update
+DELETE          api/post/{post} ............................... post.destroy › Api\PostController@destroy
+GET|HEAD        api/user ................................................................................
+
+// Comprobarlo (creo) 
+http://<example>-app.test/api/post/create
+http://<example>-app.test/api/post/5/edit 
+
+// Hay otra manera, utilizar esto, un 'only' o un 'except' y le hace caso (no lo he probado) 
+Route::resource('posts', App\Http\Controllers\Api\PostsController::class)->only(['index','show']);
+Route::resource('posts', App\Http\Controllers\Api\PostsController::class)->except(['store', 'update', 'destroy']);
+
+// Nos quedamos con la primera solución que hemos probado
+
+//// Resumen: 
+// Hemos creado un Controlador de tipo 'resource' y ha generado todas las rutas, pero hay rutas que no usaremos en Api
+// 	entonces, hemos cambiado por ApiResource, y genera solamente las necesarias para Api.
+// Inicialmente el que ha creado servía para un CRUD normal, pero aquí usamos Api. 
+
+// Otra manera de especificar rutas que se desean y que no, no solamente en api: 
+// 	Las 'only' y 'except', que nos permite determinar las rutas que queremos no queremos, etc. 
+
+// ApiResource, para el caso de Api, es más sencillo, y posiblemente más elegante. 
+// Si quieres añadir/quitar más rutas del Api, entonces ya no queda más remedio que usar 'only' y 'except' 
+
+////////////// 38:48
+
+// AppServiceProvider en app>Providers>AppServiceProvider.php
+// Recordamos que incluímos un control para que las rutas tuvieran un pattern específico
+//         Route::pattern('id', '[0-9]+'); 
+// Pues, podemos añadir otras restricciones, por ejemplo (recuerda importar la class Limit y RateLimiter)
+
+public function boot(): void
+{
+	RateLimiter::for('api', function ($request) {
+        	return Limit::perMinute(20);
+        });
+	Route::pattern('id', '[0-9]+'); // Es un patterns específico para web
+}
+
+// Como método de seguridad, las Api puden tener un máximo de peticiones (minuto, segundo, etc.) 
+// Hay un máximo para las url de api, aquí hemos puesto 20 x minuto. 
+// 	podrías poner perSecond()
+// Aquí especificamos las conexiones a partir de la ruta que tiene el prefijo 'api', entonces son las de api.
+// Incluso podríamos poner  
+// 	if (Auth::user()->paid(1000){
+//		return Limit::perminute(10);
+// 	}
+
+// Es decir, usuario que en DDBB tiene un pago de 1000, entonces solo 10/minuto
+// En definitiva, son restricciones a nivel de la conexión 
+// Crea un middleware. Habría que indagar un poco más porque esto, a veces, depende de la configuración de Apache. 
+// Se puede hacer por IP, Usuario, etc. etc. 
+// La class Limit debería indagar en ella para saber qué permite restringir y qué no. 
+
+// Primera prueba con el Api desde el VS
+// Desde el Thunder Client lanzar el http://<example-app>.test/api/post (por ejemplo: http://blog-app.test/api/post)
+// Estamos llamando a GET|HEAD api/post ......... post.index › Api\PostController@index
+// Devuelve un 200 OK y poca cosa más, no hace nada mas que dar un mensaje de OK
+
+// Hay que refinar el middleware del api, 
+// En bootstrap>app.php añadir el middleware de control de peticiones para que tenga efecto la restricción 
+
+    ->withMiddleware(function (Middleware $middleware) {
+        // Middleware de Check Role 
+        $middleware->alias([ 
+            'CheckRolAdmin' => \App\Http\Middleware\CheckRolAdmin::class,
+        ]);
+        $middleware->api("throttle:api"); 
+
+    })
+
+// Y voler a probar peticiones, indicando en app>Providers>AppServiceProvider.php ahora que 
+	return Limit::perMinute(2);
+
+// Probarlo con el thundercliente y te parará rápidito. 
+http://<blog-app>.test/api/post
+
+// A la tercera ya te para, las 2 primeras OK. Responde con un 
+Status: 429 Too Many Requests
+
+// Se puede probar también con el navegador 
+http://<example>-app.test/api/post
+
+// Volver a poner en app>Providers>AppServiceProvider.php Para no tener problemas. 
+	return Limit::perMinute(20);
+
+// Ahora, tenemos una respuesta, un 429
+// Yo puedo manipular estas respuestas a mi interés
+// Accedo a app>Providers>AppServiceProvider.php y modifico de esta manera
+// Original
+        RateLimiter::for('api', function ($request) {
+            	return Limit::perMinute(20); // Límite de peticiones x minuto desde prefijo api
+        });
+// Nuevo código
+        RateLimiter::for('api', function ($request) {
+            // Límite de peticiones x minuto desde prefijo api
+            return Limit::perMinute(20)->response(function ($request, array $headers) { 
+                return response('Custom response...', 429, $headers); 
+            });
+        }); 
+
+// La respuesta de error es un 429 y la respuesta es 'Custom response...', que lo suyo es que fuera un JSON con mensaje de error
+// Probamos con el thundercliente
+http://<example>-app.test/api/post
+
+// Se obtiene un
+Custom response...
+
+// Recordar volver a insertar un (20) para continuar, si no, nos parará rapidito
+// Si se desea, volver a dejarlo de manera original: restricción número de peticiones pero sin mensaje customizado
+        RateLimiter::for('api', function ($request) {
+            // Límite de peticiones x minuto desde prefijo api
+            return Limit::perMinute(20); 
+        }); 
+
+////////////// 50:20, vamos a ver ya las primeras llamadas API, o primeras rutas. 
+
+// Vamos a app>Http>Controllers>Api>PostController.php
+// En api siempre trabajaremos con el controlador, en ningún momento usaremos Blade
+
+    public function index()
+    {
+        $posts = Posts::all;
+        return response()->json($posts); 
+    }
+
+// Y probarlo con el thunder client
+GET http://example-app.test/api/post
+
+// Ojo, que la respuesta será Status: 500 Internal Server Error
+
+// Hemos hecho algo mal, hay que corregirlo. 
+// Acceder con el navegador para ver la resupuesta pintada
+// Error, es Post no Posts (El nombre del Modelo es Post). Modificarlo. 
+// Lo anterior ha sido bueno como ejemplo de debugear un error.
+// Y recuerda hacer el import class de Post
+
+    public function index()
+    {
+        $posts = Post::all();
+        return response()->json($posts); 
+    }
+
+// Probarlo
+GET http://<example>-app.test/api/post
+
+// Y deberíamos tener el primer json con la respuesta del Api
+// también lo puedes probar con el navegador, obtendrás un JSON
+
+// Se observa que el JSON es de todos los registros
+// Vamos a ver cómo paginarlo (el paginate en API) 
+// app>Http>Controllers>Api>PostController
+
+// Original
+    public function index()
+    {
+        $posts = Post::all();
+        return response()->json($posts); 
+    }
+
+// Paginación 
+    public function index()
+    {
+        $posts = Post::paginate(3);
+        return response()->json($posts); 
+    }
+
+// Atacamos otra vez a http://<example>-app.test/api/post
+// Y observamos que hay bastante más información que la info de datos
+// Hay info de la paginación, por ejemplo:
+
+  "current_page": 1,
+
+  "first_page_url": "http://example-app.test/api/post?page=1",
+  "from": 1,
+  "last_page": 5,
+  "last_page_url": "http://example-app.test/api/post?page=5",
+ 
+    {
+      "url": "http://example-app.test/api/post?page=2",
+      "label": "2",
+      "active": false
+    },
+
+// Probar algo, por ejemplo la página 2
+GET http://example-app.test/api/post?page=2
+
+// Conecta con el navegador y navega con el next page, prev_page, etc. 
+// Así se podría hacer una llamada a un all() y a un paginate(x) según llamada al api
+
+// Hay un servicio swagger.io para documentar apis  
+
+// Seguimos con las llamadas y ahora hacemos el show()
+// que es muy sencillo (app>Http>Controllers>Api>PostController.php) 
+    public function show(Post $post) 
+    {
+        return response()->json($post);
+    }
+
+// Probarlo con http://example-app.test/api/post/11
+
+{
+  "id": 11,
+  "title": "SSDGSDFG",
+  "url_clean": "sdfgsdfg",
+  "content": "sdgfsdf",
+  "posted": "not",
+  "category_id": null,
+  "created_at": "2024-09-18T18:45:50.000000Z",
+  "updated_at": "2024-09-18T18:45:50.000000Z",
+  "user_id": 6
+}
+
+// Veamos ahora la llamada api para el store, el de almacenar nueva publicación
+// Primero de todo, recordar que hicimos un validador de Publicaciones
+// Accedemos para quitar alguna app>Http>Requests>GuardarPostRequest.php
+// Original 
+        return [
+            'title' => ['required','unique:posts','min:5','max:255', new Uppercase], 
+            'url_clean' => 'required|unique:posts|min:5|max:255',
+            'content' => 'required|min:5|max:255',
+        ];
+// Nuevo
+// La dejamo así, sin new Uppercase
+        return [
+            'title' => ['required','unique:posts','min:5','max:255'], 
+            'url_clean' => 'required|unique:posts|min:5|max:255',
+            'content' => 'required|min:5|max:255',
+        ];
+
+// Volviendo al store()
+// Recordar Importar el GuardarPostRequest
+    public function store(GuardarPostRequest $request)
+    {
+        $data = $request->all();
+        $data["user_id"] = User::all()->random()->id; // Añade un user aleatorio, aún no hemos hecho login
+        Post::create($data);
+
+        return response()->json(['data' => 'Post creat correctament']); // Respuesta a la creación 
+    }
+
+// User::all()->random()->id; // Toma todos los usuarios, elige uno en random, y obten su id. 
+
+// Vamos a probarlo, ahora ya es un método 'POST'
+// POST http://<example-app>.test/api/post
+// parámetros 
+title : JoiJoi
+url_clean : joi_joi
+content: Lorem Ipsum Generator bla bla
+
+// Observar cómon en el Thunder Client se crea la siguiente uri;
+http://example-app.test/api/post?title=JoiJoi&url_clean=joi_joi&content=Lorem Ipsum Generator bla bla bla 
+
+// Da un error 500. Pulsa el botón Preview y vemos un 
+// Class "App\Http\Controllers\Api\User" not found
+// Nos falta un import en el store de User (use App\Models\User;)
+
+// Probarlo, ahora mismos parámetros. Y vuelve a dar otro error 
+// Internal Server Error SQLSTATE[HY000]: General error: 1364 Field 'user_id' doesn't...
+// Es un error porque no lee bien el user_id del random. 
+// Debbugearlo metiendo dd()
+    public function store(GuardarPostRequest $request)
+    {
+        $data = $request->all();
+        $data["user_id"] = User::all()->random()->id; // Añade un user aleatorio, aún no hemos hecho login
+	dd($data); 
+        Post::create($data);
+
+        return response()->json(['data' => 'Post creat correctament']); // Respuesta a la creación 
+    }
+
+array:4 [▼ // app\Http\Controllers\Api\PostController.php:31
+  "title" => "JoiJoi"
+  "url_clean" => "joi_joi"
+  "content" => "Lorem Ipsum Generator bla bla bla"
+  "user_id" => 3
+]
+
+// Pensar en quitar el dd($data); 
+// Es un error en el modelo (es pregunta de exámen) 
+// En app>Models>Post no está indicado el user_id como $fillable 
+// habrá que modificarlo para que pueda ser insertado masivamente
+// En caso contrario, insertar mediante el api no funciona. 
+// Original 
+    // Campos que son updatables de manera masiva
+    protected $fillable = [
+        'title',
+        'url_clean',
+        'content',
+    ];
+// Queda así 
+    // Campos que son updatables de manera masiva
+    protected $fillable = [
+        'title',
+        'url_clean',
+        'content',
+        'user_id' // Se ha añadido para api 
+    ];
+// Y el fillable es para poder hacer un 
+ Post::create($data);
+
+// En caso contrario habría que ir uno por uno, como en store() de PostController
+// Probarlo ahora mismos parámetros. Y ahora sí que funciona
+{
+  "data": "Post creat correctament"
+}
+
+// Ahora, leerlo, pedir la última página 
+http://example-app.test/api/post?page=5
+http://example-app.test/api/post/22
+
+{
+  "id": 22,
+  "title": "JoiJoi",
+  "url_clean": "joi_joi",
+  "content": "Lorem Ipsum Generator bla bla bla",
+  "posted": "not",
+  "category_id": null,
+  "created_at": "2024-10-28T17:31:52.000000Z",
+  "updated_at": "2024-10-28T17:31:52.000000Z",
+  "user_id": 1
+}
+
+// Vamos a hacer una mejora
+// Es mejor que, en lugar de devolver un mensaje de creación correcta
+// Realmente devuelva el registro reción creado
+
+    public function store(GuardarPostRequest $request)
+    {
+        $data = $request->all();
+        $data["user_id"] = User::all()->random()->id; // Añade un user aleatorio, aún no hemos hecho login
+
+        $post = Post::create($data); // Crea la publicación con retorno de lo creado
+        return response()->json(['data' => $post, 'Status' => 'Publicacio creada correctament']); // Responde con registro creado 
+    }
+
+// Y lo probamos 
+POST http://<example-app>.test/api/post
+// parámetros 
+title : BlaBlaBla
+url_clean : bla_bla
+content: Lorem Ipsum Generator 
+
+{
+  "data": {
+    "title": "BlaBlaBla",
+    "url_clean": "bla_bla",
+    "content": "Lorem Ipsum Generator Locaanda",
+    "user_id": 2,
+    "updated_at": "2024-10-29T08:25:23.000000Z",
+    "created_at": "2024-10-29T08:25:23.000000Z",
+    "id": 23
+  },
+  "Status": "Publicacio creada correctament"
+}
+
+// OJO, estamos utilizando mal el Thunder Client
+// pestaña Body y usar el Form para crear un form
+// y no lo envía como parámetros de la url, si no como método 'post'
+
+// Y lo probamos 
+POST http://<example-app>.test/api/post
+// parámetros en pestaña BODY
+title : JuaJuaJua
+url_clean : jua_jua
+content: Ipsum Generator Lorem
+
+{
+  "data": {
+    "title": "JuaJuaJua",
+    "url_clean": "jua_jua",
+    "content": "Ipsum Loren Generaton",
+    "user_id": 4,
+    "updated_at": "2024-10-29T08:30:57.000000Z",
+    "created_at": "2024-10-29T08:30:57.000000Z",
+    "id": 24
+  },
+  "Status": "Publicacio creada correctament"
+}
+
+// Veamos un detalle en el index(),
+// Para devolver el usuario que ha generado la publicación y la publicación
+// Original:
+    public function index()
+    {
+
+        $posts = Post::paginate(3); // Con paginación 
+        return response()->json($posts); 
+    }
+// Nuevo:
+    public function index()
+    {
+        $posts = Post::with("user")->paginate(3); // Con paginación y usuario creador
+        return response()->json($posts); 
+    }
+
+// Podríamos añadir también 'category' y cualquier FK (o relación 1:N) que tuviéramos en Post
+        $posts = Post::with(["user","category"])->paginate(3); 
+
+// Recordar controlar un poco los query que lanzan, es muy cómo, pero no optimiza como si fuera hecho de manera manual
+
+// Continuamos con el control de errores
+// y pesonalizar las respuestas vía api
+
+////////////// HTTP Status Codes 01:20
+
+// Se pueden obtener todos los códigos de error detallados en
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+
+// 1XX = Informational responses
+// 2XX = Success responses
+// 3XX = Redirect messages
+// 4XX = Client Error responses
+// 5XX = Server Error responses
+
+// Al método response()->json se le puede indicar meta información
+response->json(dades, Codi_error, Capçaleres)
+
+// Dades: datos, donde se ejecuta el json_encode de php
+// Codi_error: Especificamos el código de error o información, por defecto 200
+// Capçaleres: En aquest camp podem manipular la capçaleres de respostes 
+
+// Hagamos un ejemplo en index()
+// Original
+        return response()->json($posts); 
+// Nueva
+        return response()->json($posts,200); 
+// Probamos 
+GET http://<example-app>.test/api/post
+Status: 200 OK Size: 2.31 KB Time: 196 ms
+
+// Puedo hacer que devuelva el que yo quiera, ejemplo
+        return response()->json($posts,404); 
+
+GET http://example-app.test/api/post
+Status: 404 Not Found Size: 2.31 KB Time: 304 ms
+
+// Y en los Header, podemos añadir los que queramos o necesitemos 
+// Ejemplo final
+    public function index()
+    {
+        $posts = Post::with("user")->paginate(3); // Con paginación y usuario creador
+        return response()->json($posts, 200, ['Company' => 'Emili Darder']); // Manipulamos código error/info y cabezeras
+    }
+
+////////////// 1:24
+
+
+// Podemos hacer peticiones a lo loco y nos genera errrores, obviamente
+http://example-app.test/api/blabla
+Status: 404 Not Found Size: 6.45 KB Time: 967 ms
+
+// Vamos a controlar un poco mejor todo esto. 
+// Control de errores inesperados como 400 Bad Request o 401 Unauthorized
+// Accedemos a bootstrap>app.php
+// Original 
+    ->withExceptions(function (Exceptions $exceptions) {
+        //
+    })->create();
+
+// Nuevo 
+    ->withExceptions(function (Exceptions $exceptions) {
+        
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json(['message' => 'No hem trobat elements'], 404);
+            }
+        });
+
+    })->create();
+
+
+// Vamos a probarlo. Controlamos la respuesta del error
+// Y no lo hace, lo ignora, no sabemos el motivo. Vamos a refinarlo.
+
+// Ahora mismo con las llamadas, nos proporciona toda la info
+// Por ejemplo, en el 
+GET http://<example-app>.test/api/post
+
+// devuelve todos los campos de información existentes en Post
+// Podemos cribar info, como por ejemplo: create_at, updated_at, role, etc. 
+// Recuerda que en app>Models>User.php ya se oculta el passwd y el token
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+// Si no tuviéramos lo anterior, se envía y se muestran. 
+// El passwd está encriptado, pero se mostraría. 
+
+
+//////////////////////// 1:29
+
+
+// Vamos a personalizar las respuestas del api
+// Lo normal es que no queramos devolver vía api toda la información de la DDBB
+// o que la queramos personalizar, o cribar, o transformar de alguna manera. 
+// Ahora mismo se muestra tal cual, sin tratar
+// Laravel proporciona las clases API Resource
+
+λ php artisan make:resource PostResource
+
+// Habrá creado una class que extiende JsonResource en app>Http>Resources>PostResources.php
+// Veamoslo: Así como está, vemos que el request que le pasemos lo convierte en un array
+// Lo podemos utilizar de la siguiente manera
+// Ejemplo, solo deseamos que aparezcan algunos datos
+// en app>Http>Resources>PostResources.php
+    public function toArray(Request $request): array
+    {
+        // return parent::toArray($request);
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+        ];
+    }
+
+// Ahora accedemos a app>Http>Controllers>Api>PostController.php y modificamos el show()
+// original
+    public function show(Post $post) 
+    {
+        return response()->json($post);
+    }
+//nuevo (recuerda hacer el import para el PostResource)
+    public function show(Post $post) 
+    {
+        return new PostResource($post); 
+    }
+
+// y lo probamos 
+GET http://example-app.test/api/post/22
+// La respuesta es según lo especificado 
+{
+  "data": {
+    "id": 22,
+    "title": "JoiJoi"
+  }
+}
+
+// Vamos a mejorar esa salida
+// app>Http>Resources>PostResources.php
+    public function toArray(Request $request): array
+    {
+        // return parent::toArray($request);
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'url_clean' => $this->url_clean,
+            'content' => $this->content,
+        ];
+    }
+// y el http://example-app.test/api/post/22 nos devuelve 
+{
+  "data": {
+    "id": 22,
+    "title": "JoiJoi",
+    "url_clean": "joi_joi",
+    "content": "Lorem Ipsum Generator bla bla bla"
+  }
+}
+
+// Y mucho mejor si lo combinamos todo en la function show(Post $post)
+// Original
+        return new PostResource($post); 
+// Nuevo 
+        return response()->json(new PostResource($post), 200, ['Organization' => 'IEF Emili Darder']); 
+
+
+// De esta manera, podemos controlar las respuestas del API y transformar si lo necesitamos, etc, etc. 
+// Podemos crear tantos Resources como necesitemos
+// por ejemplo; una "min", que solo devuelva el 'id' y el 'titulo'
+// Esto nos da libertad para generar la respuesta según nos interese
+
+
+//////////////////////// 1:47
+
+
+// En app > Http > Controllers > API > PostController.php
+// podemos crear las llamadas que necesitemos, por ejemplo, llamadas que no tiene nada que ver con un CRUD
+// Creamos la public function tomeu() que tendría acceso a TODO (por ejemplo DDBB), etc. 
+public function tomeu() 
+{
+	return response()->json(['data' => 'Soy Tomeu Sabater']);
+}
+
+// Vamos a las rutas routes>api.php
+Route::get('/tomeu',[PostController::class, 'tomeu']);
+
+// Y así en el api, ahora tenemos esta nueva llamada http://example-app.test/api/tomeu
+{
+  "data": "Soy Tomeu Sabater"
+}
+
+
+// Accedemos a app>Http>Resources>PostResources.php
+// para llevar a cabo una transformación de la info y devolverla según y cómo nos interesa
+// Original
+    public function toArray(Request $request): array
+    {
+        // return parent::toArray($request);
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'url_clean' => $this->url_clean,
+            'content' => $this->content,
+        ];
+    }
+//Nuevo (recuerda el Import del Str y del Carbon) Formateamo fecha y no devolvemos todo de category
+    public function toArray(Request $request): array
+    {
+        return [
+            'identifier' => $this->id,
+            'title' => Str::upper($this->title),
+            'url_clean' => $this->url_clean,
+            'user' => $this->user, // Modelo Post tiene relación $this->belongsTo con Modelo User
+            'category' => $this->category->only('id','title'), //Modelo Post tiene relación $this->belongsTo con Modelo Category
+            'content' => $this->content, 
+            'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"),
+        ]; 
+    }
+
+// Podemos añadir elementos como necesitemos, incluso otros Resources creados 
+// El Carbon permite manipular fechas: sumar, restar, formato, etc.
+// simplemente convertimos a Carbon la fecha y luego le aplico formato. 
+// Y lo probamos http://example-app.test/api/post/22
+{
+  "identifier": 1,
+  "title": "VELIT SAEPE OMNIS RECUSANDAE ODIT.",
+  "url_clean": "velit-saepe-omnis-recusandae-odit",
+  "user": {
+    "id": 4,
+    "name": "Aisha Feest",
+    "email": "anika58@example.org",
+    "role": "user",
+    "email_verified_at": "2024-11-23T12:03:59.000000Z",
+    "created_at": "2024-11-23T12:03:59.000000Z",
+    "updated_at": "2024-11-23T12:03:59.000000Z"
+  },
+  "category": {
+    "id": 2,
+    "title": "Disseny personal"
+  },
+  "content": "<html><head><title>Rem enim magni voluptas expedita error labore molestiae vel porro est ea.</title></head><body><form action=\"example.net\" method=\"POST\"><label for=\"username\">magnam</label><input type=\"text\" id=\"username\"><label for=\"password\">quia</label><input type=\"password\" id=\"password\"></form><span>Ducimus voluptatibus quibusdam qui iure nulla placeat.</span><h3>Est necessitatibus quae ratione.</h3><table><thead><tr><th>Modi quasi quod.</th><th>Iusto rem sed.</th></tr></thead><tbody><tr><td>Consectetur sit sed ducimus et dolore et eius iure et qui.</td><td>Reiciendis sit dolorem.</td></tr></tbody></table></body></html>\n",
+  "creation_date": "23-11-2024"
+}
+
+
+
+//////////////////////// 1:53
+
+// El Carbon es muy interesante, veámoslo un poco. (carbon.nesbot.com) 
+
+            'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"),
+// Convierte la fecha a Carbon y luego le aplica el formato
+
+// Se puede añadir dias, restar semanas, formatos, crear fechas a partir de strings, diferencia entre fechas, etc. etc.
+// Cuando se tenga que jugar con fechas, pensar en esta librería, simplifica mucho las operaciones. 
+// Por ejemplo, la diferencia de horas es bastante útil, 
+// Qué dia es hoy, mañana, etc. en ubicaciones del mundo, etc. 
+
+// Pensar que en un diálogo API, sobre todo de reservas, es abitual añadir un timestamp de creación en cada trama
+// Otro ejemplo, añadir hora UTC en reservas, etc. 
+
+// Carbon viene instalado en Laravel, solamente hay que hacer el Use, y aplicar cualquier función
+
+
+// Continuamos con la reutilización del PostResource
+// en el app>Http>Controllers>Api>PostController ahora mismo únicamente se utiliza en function show(Post $post)
+// sería muy interesante que lo devolviera en la respuesta de creación de una publicación
+
+// Original 
+        return response()->json(['status' => 'Publicación creada correctamente',
+                                'data' => $post]);
+// Nuevo 
+        return response()->json(['status' => 'Publicación creada correctamente',
+                                'data' => new PostResource($post)]);
+
+// Lo probamos 
+POST http://blog-app.test/api/post
+title: PioPio
+url_clean: pio_pio
+content: Ipsum Generator Lorem Again
+
+{
+  "status": "Publicación creada correctamente",
+  "data": {
+    "identifier": 9,
+    "title": "PIOPIO",
+    "url_clean": "pio_pio",
+    "user": {
+      "id": 3,
+      "name": "Rebecca Davis",
+      "email": "franecki.bette@example.com",
+      "role": "user",
+      "email_verified_at": "2024-11-23T12:03:59.000000Z",
+      "created_at": "2024-11-23T12:03:59.000000Z",
+      "updated_at": "2024-11-23T12:03:59.000000Z"
+    },
+    "category": {
+      "id": 4,
+      "title": "Art i cultura"
+    },
+    "content": "Ipsum Generator Lorem Again",
+    "creation_date": "08-12-2024"
+  }
+}
+
+// Y también lo podemos añadir en  public function index() de app>Http>Controllers>Api>PostController
+// ojo que aquí no va igual, porque lo que queremos es que cada uno de los resultados sea tratado
+
+// Original
+    public function index()
+    {
+        $posts = Post::with(["user","category"])->paginate(3); //Con paginación y usuario creador 
+        return response()->json($posts,200,['Organization' => 'IEF Emili Darder']); // Devuelve un JSON y código 200
+    }
+ 
+// Nueva
+    public function index()
+    {
+        $posts = Post::with(["user","category"])->paginate(3); //Con paginación y usuario creador 
+        return PostResource::collection($posts); // Devuelve una colección de $post tratados por PostResources
+    }
+
+// Probarlo
+GET http://blog-app.test/api/post
+
+// Y de esta manera podemos tratar la respuesta del api y devolver los datos con la estructura que deseemos. 
+// Paginación sirve para obtener información en bloques. 
+// En entorno batch, un proceso hacer una carga en bloques. 
+// Ver como no devuelve toda la info de user porque en el app>Models>User hay protected $hidden
+
+
+//////////// 02:09 
+
+// Veamos más detalles sobre Api
+// Es posible que la respuesta, o según que datos de la respuesta, solamente se incluyan según una condición
+// Vamos a devolver el contenido solamente si está publicado, es decir, un posted == 'yes' 
+
+// Original 
+        return [
+            'identifier' => $this->id,
+            'title' => Str::upper($this->title),
+            'url_clean' => $this->url_clean,
+            'user' => $this->user, // Modelo Post tiene relación $this->belongsTo con Modelo User
+            'category' => $this->category->only('id','title'), //Modelo Post tiene relación $this->belongsTo con Modelo Category
+            'content' => $this->content,
+            'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"), // Formato de fecha mediante Carbon 
+        ]; 
+
+// Nuevo 
+        return [
+            'identifier' => $this->id,
+            'title' => Str::upper($this->title),
+            'url_clean' => $this->url_clean,
+            'user' => $this->user, // Modelo Post tiene relación $this->belongsTo con Modelo User
+            'category' => $this->category->only('id','title'), //Modelo Post tiene relación $this->belongsTo con Modelo Category
+            'posted' => $this->posted,  // Muestra si está publicado o no 
+            'content' => $this->when(($this->posted == 'yes'), $this->content), // Solamente si está posted 
+            'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"), // Formato de fecha mediante Carbon 
+        ]; 
+
+// O incluso podemos hacerlo mediante una función y dentro de la function() podemos manipular cosas. 
+
+    public function toArray(Request $request): array
+    {
+        // return parent::toArray($request); // Por defecto convierte en array lo que pasemos
+        return [
+            'identifier' => $this->id,
+            'title' => Str::upper($this->title),
+            'url_clean' => $this->url_clean,
+            'user' => $this->user, // Modelo Post tiene relación $this->belongsTo con Modelo User
+            'category' => $this->category->only('id','title'), //Modelo Post tiene relación $this->belongsTo con Modelo Category
+            'posted' => $this->posted,  // Muestra si está publicado o no 
+            'content' => $this->when(($this->posted == 'yes'), function() { // Se muestra el content solamente si posted == 'yes' 
+                // Exclusíva,ente devolvemos el content, pero el código se puede sofisticar
+                return $this->content;
+            }), 
+            'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"), // Formato de fecha mediante Carbon 
+        ]; 
+    }
+}
+
+//////// // 02:13
+// Vamos a refinar todavía nás el app>Http>Resources>PostResource 
+// Haremos un merge
+// Añadimos los siguiente para ver solamente datos de los que están posted == 'yes' (publicados) 
+
+// Original 
+            'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"), // Formato de fecha mediante Carbon 
+
+// Nuevo 
+            $this->mergeWhen(($this->posted == 'yes'), [
+                'creation_date' =>Carbon::parse($this->created_at)->format("d-m-Y"), // Formato de fecha mediante Carbon 
+                'category' => $this->category->only('id','title'), //Modelo Post tiene relación $this->belongsTo con Modelo Category
+            ]),
+
+// Recordar que en el app>Http>Resources>PostResource lo que hacemos es tratar lo que mostramos en el API
+// para filtrar lo que mostramos en el API se haría en app>Http>Controllers>Api>PostController, por ejemplo en el index()
+
+
+// Le damos una vuelta de tuerca más al app>Http>Resources>PostResource 
+// Añadir valores adicionales (no me funciona) 
+
+
+//////////// 02:24
+// Hagamos ahora el login 
+// Tendremos que crear un nuevo controlador para el login
+// Le quitamos el --api porque no queremos las instrucciones de api
+
+λ php artisan make:controller Api/AuthController
+
+// Ahora tenemos el app>Http>Api>AuthController, indagarlo
+// Añadir el siguiente código para el método de register() del nuevo usuario
+
+class AuthController extends Controller
+{
+    public function register(Request $request) {
+
+        // Validamos el Request recibido 
+        $request->validate([
+            'name' => 'required', // está informado 
+            'email' => 'required|email', // está informado y es un mail
+            // 'role' => 'required', //le daremos un valor x defecto 
+            'password' => 'required', // está informado 
+        ]);
+
+        // Con datos del Request creamos un nuevo usuario 
+        $user = new User();
+        $user->name = $request->name;
+        $user->email = $request->email; 
+        $user->role = 'peon'; // valor x defecto cuando se crea mediante api 
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        return response()->json(['msg' => 'Usuari create correctament'],200);
+    }
+}
+
+// Ahora falta aplicar la nueva ruta
+// en routes>api añadir
+
+Route::post('/register',[AuthController::class, 'register']); 
+
+// Hemos crea una nueva llamada api de tipo POST que llama al método register() de AuthController
+// Lo probamos con el Thunder Client
+
+POST http://blog-app.test/api/register
+En Body Form
+name		Tomeu
+email		tomeu@gmail.com
+role		peon
+password	12345678
+
+{
+  "msg": "Usuari create correctament"
+}
+
+// Comprobarlo en la DDBB directamente los usuarios creados mediante api
+/////// 02:35
+
+// Ya hemos registrado usuarios con la API, ahora hay que hacer el validate
+// validate o comprobar usuarios. Es el login de usuarios
+// Y lo añadiremos al app>Http>Api>AuthController
+
+ public function login(Request $request) { // Login usuarios
+        
+        // Validamos el Request recibido con el login 
+        $request->validate([
+            'email' => 'required|email', // está informado y es un mail
+            'passowrd' => 'required', // está informado 
+        ]);
+
+        // Obtenemos el usuario con el email informado
+        $user = User::where('email', $request->email)->first(); // No haría falta el first(), porque email es único
+
+        if(!$user || !Hash::check($request->password, $user->password)) { // Comprobamos si existe usuario y si password es correcto
+            throw ValidationException::withMessages([
+                'email' => ['Usuario o contrasenya incorrectes'],
+            ]); 
+        }
+        //$token = $user->createToken("paraula clau")->plainTextToken; // Creamos un token con una palabra clave inventada
+        $token = $user->createToken($user->email)->plainTextToken; // Creamos un token con una palabra clave, por ejemplo, email que es único
+        return response()->json([
+            'token' => $token,
+            'msg' => 'Login correcte'
+        ]);
+    }
+
+// Ahora vamos a routes>api para configurar esta llamada
+Route::post('/login',[AuthController::class, 'login']); // La llamada api para login de usuarios
+
+// Vamos a probarlo
+http://blog-app.test/api/login 
+email	joan@gmail.com
+password 12345678
+
+// No funciona, hay que revisarlo, la manera de crear tokens no funciona bien. 
+// Hay que modificar el Modelo User, en app>Models>User añadir
+    use HasFactory, Notifiable, HasApiTokens;
+
+// Recordar el import del HasApiTokens
+use Laravel\Sanctum\HasApiTokens;
+
+// Probarlo ahora. Funciona con login correcto, con login incorrecto NO funciona bien 
+
+////// 02:44
+
+// Continuamos jugando con el token
+// haremos dos métodos, el Logout
+// Indagar sobre la duración del token en config>sanctum, vemos que
+
+    /*
+    |--------------------------------------------------------------------------
+    | Expiration Minutes
+    |--------------------------------------------------------------------------
+    |
+    | This value controls the number of minutes until an issued token will be
+    | considered expired. This will override any values set in the token's
+    | "expires_at" attribute, but first-party sessions are not affected.
+    |
+    */
+
+    'expiration' => null,
+
+// Codificamos el logout
+
+// En app>Http>Controllers>Api>AuthController
+
+    public function logout(Request $request) { // Logout de usuarios con la eliminación del token 
+
+        auth()->user()->tokens()->delete();
+        return response()->json([
+            'msg' => 'Logout correcto'
+        ]); 
+    }
+
+
+// En routes > api
+Route::post('/logout',[AuthController::class, 'logout']); // La llamada api para logout de usuarios
+
+// Lo probamos
+POST http://blog-app.test/api/logout
+En Headers añadir una nueva clave 'Authorization' con valor 'Bearer <token>'
+Authorization Bearer 4|cxtyZUGSZPe4EMWcJxAkEKavSz3qVCN0LS9yqmPe66968576
+
+{
+  "msg": "Logout correcto"
+}
+
+
+// Hay que modificar las rutas para pasar el token y que autentique
+// de esta manera en routes>api
+
+Route::post('/register', [AuthController::class, 'register' ]); // esta llamada no necesita token
+
+Route::post('/login', [AuthController::class, 'login' ]); // esta llamada no necesita token
+
+Route::middleware(['auth:sanctum'])->group(function () { // estas llamadas necesitan token para acceder a ellas
+    Route::apiResource('/post', PostController::class);
+    Route::post('/logout', [AuthController::class, 'logout' ]);    
+});
+
+
+// Lo probamos todo
+
+// Login 
+POST http://blog-app.test/api/login
+Body>Form
+email joan@gmail.com
+password 12345678
+
+{
+  "token": "8|Gdt8goz5KHUzJnJKytWuUtGdLqUkAIQt2ZhitdVna7c8e1f3",
+  "msg": "Login correcte"
+}
+
+// index()
+GET http://blog-app.test/api/post
+Headers>Authorzation
+Bearer 8|Gdt8goz5KHUzJnJKytWuUtGdLqUkAIQt2ZhitdVna7c8e1f3
+
+// show()
+GET http://blog-app.test/api/post/3
+Headers>Authorzation
+Bearer 8|Gdt8goz5KHUzJnJKytWuUtGdLqUkAIQt2ZhitdVna7c8e1f3
+
+// logout()
+POST http://blog-app.test/api/logout
+Headers>Authorzation
+Bearer 8|Gdt8goz5KHUzJnJKytWuUtGdLqUkAIQt2ZhitdVna7c8e1f3
+{
+  "msg": "Logout correcto"
+}
+
+//// Con el logout hecho, intentamos una llamada
+// index()
+GET http://blog-app.test/api/post
+Headers>Authorzation
+Bearer 8|Gdt8goz5KHUzJnJKytWuUtGdLqUkAIQt2ZhitdVna7c8e1f3
+
+// Y da un error, intenta llamar al login de web que no está implementando. 

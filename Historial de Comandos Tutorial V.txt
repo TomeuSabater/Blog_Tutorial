@@ -1,0 +1,1070 @@
+///////////////////////////////////////////////////////////
+Bartolomé Sabater
+Emili Darder - Desenvolupament Entorn Servidor - 2024-25-26
+
+Finalización del CRUD
+
+	- Navegación 
+    	- CKEditor 
+	- Relaciones (de entidades) y Middleware
+	- Relaciones: 1:1, 1:N, N:M (Desplegables)
+
+///////////////////////////////////////////////////////////
+
+
+// Acceder al dashboard y loginearse 
+http://<blog-app.test>/
+http://<blog-app.test>/dashboard (bmesabater@gmail.com / 12345678) 
+
+// Veamos la parte de los LAYOUT
+// Ahora mismo, ya tenemos las pantalla del CRUD más o menos bonitas y con un diseño uniforme. 
+//	ante cualquier cambio, recordar siempre compilar el css de tailwindcss
+
+λ npm run dev (Durante el desarrollo --> reactivo, se recomienda durante la etapa de desarrollo)
+λ npm run build (Antes de la subida a producción --> Genera las class en fichero óptimo estático) 
+
+// Vamos a crear los link para nuestro CRUD en el menú de opciones
+// 	ahora mismo, para acceder al CRUD, debemos tecleamos el enlace directamente.  
+// Hay que incluir el código de los link en 
+//	resources>views>layouts>navigation.blade.php
+
+// Observar que hay el siguiente código al inicio, en la primera línea
+<nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
+
+// Hay una variable 'open' que le asignamos el valor 'false' 
+// Este 'open' se usa más abajo mismo código para (en Hamburger) 
+	<button @click="open = ! open" class="inline-flex ...
+		...
+		<path :class="{'hidden': open, 'inline-flex': ! open }" ... 
+		<path :class="{'hidden': ! open, 'inline-flex': open }" ... 
+
+// El Hamburger, es el menú hamburguesa, el que aparece de manera responsiva cuando la página es más pequeña (probarlo)
+// 	es el menú de tres línea.  
+            <div class="-me-2 flex items-center sm:hidden">
+
+// Vamos a poner los enlaces; habrá dos tipos de enlace:
+// 	Cuando la página sea completa, que ocupa toda la pantalla y hay espacio para el menú normal
+// 	Cuando la página sea minimizada, ocupa pantalla pequeña y se aplicará el efecto responsivo
+// El código es el siguiente:
+
+// Tener cuidado de identificar la ubicación de  
+// <!-- Navigation Links --> dentro de navigation.blade.php
+// Observar la estructura  <x-nav-link... recordar que esto es un Component, 
+//	verlo en resources>views>components>nav-link.blade.php
+// Confeccionar el siguiente código (con enlaces iniciales a la lista de items)
+
+                <!-- Navigation Links -->
+                <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
+                    
+                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
+                        {{ __('Dashboard') }}
+                    </x-nav-link>
+
+                    <!-- Links para Publicaciones -->
+                    <x-nav-link :href="route('postCRUD.index')" :active="request()->routeIs('postCRUD.index')">
+                        {{ __('Publicaciones') }}
+                    </x-nav-link>
+
+                    <!-- Links para Categorias -->
+                    <x-nav-link :href="route('categoryCRUD.index')" :active="request()->routeIs('categoryCRUD.index')">
+                        {{ __('Categorias') }}
+                    </x-nav-link>
+
+                </div>
+
+// Probarlo con 
+http://blog-app.test/ (pulsar sobre dashboard o loginearse)
+http://blog-app.test/dashboard
+
+// Minimizar pantalla para comprobar como queda la responsividad-> Todavía no funciona, porque no hemos creado enlaces responsivos
+
+// Y observar que en la cabezera, ahora aparecen las entradas; Dashboard / Publicaciones / Categorias
+// Ir pulsando y podremos cambiar de pantalla, obviamente Publicaciones o Categorias 
+//	te lleva a la primera página de la lista de Publicaciones o Categorias (que es lo que hemos configurado en los Menúes)
+// Fijarse también que la pantalla, en este menú, sale como 'activa' (resaltado y subrayado). 
+
+// Ver como si se minimiza la pantalla, los enlaces no aparecen, no hemos añadido todavía el código para efecto responsivo 
+// Hay que añadir los links en :     
+
+<!-- Responsive Navigation Menu -->
+
+// En esta zona del código vemos otro componente  
+<x-responsive-nav-link ... > 
+// que podemos inspeccionarlo en resources>views>components>responsive-nav-link.blade.php
+
+// En navigation.blade.php en 
+// <!-- Responsive Navigation Menu --> 
+// añadir el siguiente código, justo después de la entrada de Dashboard 
+
+        <div class="pt-2 pb-3 space-y-1">
+            <x-responsive-nav-link :href="route('postCRUD.index')" :active="request()->routeIs('postCRUD.index')">
+                {{ __('Publicaciones') }}
+            </x-responsive-nav-link>
+        </div>
+
+        <div class="pt-2 pb-3 space-y-1">
+            <x-responsive-nav-link :href="route('categoryCRUD.index')" :active="request()->routeIs('categoryCRUD.index')">
+                {{ __('Categorias') }}
+            </x-responsive-nav-link>
+        </div>
+
+// Probarlo ahora forzando la responsividad. 
+// Comprobar que el menú hamburguesa contiene la navegación 
+http://<blog-app.test>/dashboard
+
+
+///////////////////////////  CKEditor
+
+(Está explicado más abajo) 
+//// Hagamos dos cosas 'especiales' 
+//// Vamos a instalar el CKEditor (https://ckeditor.com/) que es un editor de texto en formato WYSIWYG que permite escribir contenido directamente dentro de 
+//// las páginas web o aplicaciones en línea. Su código está escrito en JavaScript (es una librería JS) y está desarrollado por CKSource (https://cksource.com/)
+//// Esto nos permitirá 'tratar' el texto, por ejemplo, el texto de las Publicaciones en el textarea, cuando las creamos / editamos, tener una herramienta
+//// que nos permitan tratar el texto. 
+//// El CKEditor no es el único que existe, se pueden poner otros 
+//// Veámoslo:
+
+
+////////////////////////////  RELACIONES
+
+
+/////////  CREATE
+
+// Veamos, cómo asignar Categorías a una Publicación 
+//	accedemos a la pantalla de creación de un Post
+http://<blog-app.test>/postCRUD/create 
+
+// A una publicación cualquiera hay que poder asignarle una Category de las que tenemos. 
+// Veamos cómo, y en general, veamos cómo poder gestionar las relaciones 1:N. 
+// Una Publicación es 1:N contra Category (será un desplegable) 
+
+// Editar el Controlador pertienente: app>Http>Controllers>PostControllerCRUD.php a la funcion create() 
+// Este PostControllerCRUD está lleno de código comentado de las pruebas que hemos ido haciendo 
+// Es buena idea copiarlo, para guardar los ejemplos, y tener un limpio 
+// Una vez hecho backup del original, limpiar todo el código comentado 
+
+// Añadimos el siguiente código en el método create(), para recuperar todas las Category, 
+//	En principio deberemos mostrarlas todas para que se pueda seleccionar 
+//  	recordar el import las class Category en el PostControllerCRUD.php
+
+// Original 
+    public function create()
+    {
+        return view('post.create'); // Llama a la vista create.blade.php que muestra el formulario de creación
+    }
+
+// Nuevo 
+    public function create()
+    {   
+        $categories = Category::all(); // Recuperamos las categorías para asignarlas en el create
+        return view('post.create', ['categories' => $categories]); // Llama a la vista create.blade.php con Categories 
+    }
+
+// Y ahora, en la View resources>views>post>create.blade.php, que es donde lo recibiremos
+//      primero lo probamos añadiendo un @dd() para verlo al inicio del código del formulario, justo antes del  <div class="py-12">
+
+    </x-slot>
+
+    @dd($categories);  // Para comprobar que se reciben las categories
+
+    <div class="py-12">
+
+// Probarlo llamando 
+http://<blog-app.test>/postCRUD/create 
+
+ // Y deberían verse. 
+      #attributes: array:7 [
+        "id" => 1
+        "title" => "Noves tecnologies"
+        "url_clean" => "noves_tecnologies"
+        "start_date" => null
+        "end_date" => null
+        "created_at" => "2024-09-12 13:04:34"
+        "updated_at" => "2024-09-12 13:04:34"
+      ]
+
+// Así como está ahora, pasa toda la info que vemos con el @dd($categories);
+// Recordar que podemos hacer que pase menos info, una info más simplificada con el 'pluck'
+// Es bueno aplicarlo aquí para que sea más ágil, pensar que podría pasar mucha info
+// El PostControllerCRUD.php, lo dejamos así 
+
+    public function create()
+    {
+        
+        //$categories = Category::all(); // Recuperamos las categorías para asignarlas en el create
+        $categories = Category::pluck('id','title'); // Recuperamos las Category, solamente los campos que nos interesan 
+        return view('post.create', ['categories' => $categories]); // Llama a la vista create.blade.php con Categories  
+    }
+
+// Comprobarlo otra vez 
+http://blog-app.test/postCRUD/create 
+
+// Ahora el @dd($categories); escupe una info mucho más escueta y lo que realmente necesitamos
+Illuminate\Support\Collection {#1332 ▼ // resources\views/post/create.blade.php
+  #items: array:8 [▼
+    "Noves Tecnologies" => 1
+    "Disseny personal" => 2
+    "Il·lustracions" => 3
+    "Art i cultura" => 4
+    "TOMEU" => 6
+    "HOLA QUE TAL" => 8
+    "TOMMY" => 9
+    "ABCDEF" => 10
+  ]
+  #escapeWhenCastingToString: false
+}
+
+// En el create.blade.php finalmente, borrar o comentar el  @dd($categories); 
+// (Yo lo he tenido que borrar, no comenta bien y hace un desastre en el html) 
+
+// Y ahora tendremos que añadir un desplegable de Categories.
+// Añadir el siguiente código que nos renderiza el desplegable de Categories 
+
+                        <div class="mb-3">
+                            <label for="categories_id">Categories</label>
+                            <select name="categories_id" class="mt-1 block w-full">
+                            @foreach ($categories as $title => $id)
+                                <option value="{{$id}}">{{$title}}</option>
+                            @endforeach
+                            </select>
+                        </div> 
+
+// Ya tenemos maquetada la página con un ejemplo de desplegable 1:N
+//	Es muy recomendable usar el 'pluck' en la lectura.  
+
+// Ahora, hay que guardarlo, cuando creamos la publicación deberemos guardar también la Category seleccionada
+//	actualmente se guarda una categoría al azar
+
+// Para ello, acceder a PostControllerCRUD.php al método store() y observar como ahora mismo NO guardamos la Category 
+// Ver como se guarda uno a uno los campos que llegan
+// Para empezar, añadir un $post->category_id = $request->content; 
+// Y ya que estamos podemos aprovechar y guardar también el Posted (yes / not)
+// 	y también eliminar el with('status','<h1>Publicación creada correctamente</h1>'); 
+// 	ya que si hay error lo mostrará, y si no, salta al index(), suponiendo se ha creado ok. 
+// También se podría hacer un orderBY en el index para mostrar inversamente por fecha de creación y nos 
+//  	mostraría los últimos creados en orden inverso. 
+
+// Queda como sigue:
+
+    public function store(GuardarPostRequest $request)
+    {
+       
+        $post = new Post; 
+
+        $post->title = $request->title;
+        $post->url_clean = $request->url_clean;  
+        $post->content = $request->content; 
+        $post->posted = $request->posted; 
+        $post->category_id = $request->categories_id; // Añade la FK de category
+        $post->user_id = User::all()->random()->id; // Para que la FK user_id funcione, elegimos al azar
+
+        $post->save(); 
+
+        return redirect()->route('postCRUD.index'); 
+    }
+
+    public function index()
+    {
+        // Devuelve el resultado de 3 en 3 publicaciones paginado y ordenado por fecha de creación descendente
+        $posts = Post::orderBy('created_at', 'desc')->paginate(3); 
+        return view('post.index',['posts' => $posts]);  // Llamada a la View 'post.index' pasando $posts para maquetar el resultado del SQL
+    }
+
+
+// Y vamos a probarlo, ahora mirando la DDBB todos tienen (uno aleatorio)
+//	crear uno y comprobarlo directamente en la DDBB
+http://example-app.test/postCRUD/create
+
+// Si no renderiza bien, recordar generar las class de tailwindcss
+λ npm run dev // Rastrea cambios y los aplica en dinámicamente -> Adecuado para desarrollo
+λ npm run build // Genera el fichero de clases css, pero no rastrea cambios -> Adecuado para producción 
+
+
+/////////  SHOW 
+
+
+//// Vamos a ver cosas de las relaciones desde el punto de vista de Eloquent
+// (https://laravel.com/docs/11.x/eloquent-relationships)
+
+// Where o Join para cargar las Categorias de las publicaciones
+// En app>Http>Controllers>PostControllerCRUD vamos a show()
+
+// Y podríamos hacer lo siguiente :
+// 	Obtenemos una categoria
+//        	$cat = Category::where('id', $postCRUD->category_id); 
+// 	Y luego pasarla, pero esto es hacerlo 'a pelo'
+
+// Eloquent nos deja desde el modelo (Post) poder acceder a las Category
+// Recordar que en la definición del Model tenemos la siguiente relación
+// Vamos al app>Models>Post.php y ver que hay un método publico que se llama category()
+//    public function category() // 1 Post es de 1 Category
+//    {
+//      return $this->belongsTo(Category::class);  // N:1
+//    }
+// Le estamos diciendo que tiene una relación belongsTo (un Post pertenece a una Category) 
+
+// Revisado esto, vamos al resoruces>views>components>cards-post.blade.php 
+// que es donde se renderizan las publicaciones creadas
+// Llamo a este método para que me devuelva la Category y la mostramos en la View
+
+        <h3 class="mb-2 text-xl font-medium leading-tight">{{ $post->category->title }}</h3>
+
+// Ojo, puede generar un error si hay algún null en la DDBB 
+//  en tal caso, añadiremos un condicional en el card-posts.blade.php para prevenir esta posibilidad
+
+        @if ($post->category)
+            <h3 class="mb-2 text-xl font-medium leading-tight">{{ $post->category->title }}</h3>
+        @endif
+
+// Ya ahora sí que funcionará correctamente en todos los casos
+
+// Ejercicio: Hacer exáctamente lo mismo para user()
+//  Recordar que el user, ahora mismo, se toma con una función aleatoria en el store()
+//	lo que haríamos es mostrarlo, en absoluto modificarlo o añadirlo en la creación
+// Revisar en Model Posts el método user() y es lo mismo, se aplicaría la misma estrategia 
+//    public function user()
+//    {
+//        return $this->belongsTo(User::class);
+//    }
+
+// En card-posts.blade.php, añadir
+        <p class="mb-4 text-sm">user: {{$post->user->name}}</p>
+
+
+// Finalmente, la View card-posts.blade.php quedaría asi 
+
+<div class="block rounded-lg bg-white shadow-secondary-1">
+    <div class="p-6 text-surface">
+        <h5 class="mb-2 text-xl font-medium leading-tight">{{ $post->title }}</h5>
+        <h3 class="mb-2 text-xl font-medium leading-tight">{{ $post->url_clean }}</h3>
+        @if ($post->category)
+            <h3 class="mb-2 text-xl font-medium leading-tight">{{ $post->category->title }}</h3>
+        @endif
+        <p class="mb-4 text-base">{{ $post->content }}</p>
+        <p class="mb-4 text-sm">user: {{$post->user->name}}</p>
+        <p class="mb-4 text-sm">posted: {{ $post->posted }}</p>
+        <p class="mb-4 text-sm">created at: {{ $post->created_at }}</p>
+        <p class="mb-4 text-sm">updated at: {{ $post->updated_at }}</p>
+        <a href="{{route('postCRUD.show' , ['postCRUD' => $post->id])}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+        <a href="{{route('postCRUD.edit' , ['postCRUD' => $post->id ])}}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+        <form action="{{route('postCRUD.destroy' , ['postCRUD' => $post->id ])}}" method="POST" class="float-right">
+           @method('DELETE')
+           @csrf
+           <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Delete</button>
+        </form>
+    </div>
+</div>
+
+// Probar que ahora se muestra todo
+http://blog-app.test/postCRUD
+
+// Nota, estamos usando métodos del Model desde una View
+//	no es lo más 'purista', dese el punto de vista de la arquitectura MVC que hemos propuesto
+//	Sería mejor la primera opción, donde se obtiene la categoría y el usuario en el Controller
+//	y poder aplicar lógica de negocio, por ejemplo, ocultar las publicaciones de un usuario, enmascararlo, etc. 
+
+
+/////////  UPDATE
+
+// Nota: No se debería dar la posibilidad de actualizar
+//	- el usuario de la Publicación (por reglas de negocio) 
+//  	- el created_at (por razones obvias)
+//	- el updated_at (porque se actualizará automáticamente, no como entrada de datos)
+// 	- Especial atención a las categorías, es una 1:N, sí se debería poder seleccionar otra. 
+
+// Lo primero que hacemos es modificar el método edit() del PostControllerCRUD para que 
+// 	lea las Categories y las envíe a la View edit. 
+// Usaremos el 'pluck' de la misma manera que lo usamos en el create.
+// Recordar pasar las categories a la View   
+
+// El método edit() queda de la siguiente manera:
+
+    public function edit(Post $postCRUD)
+    {
+        $categories = Category::pluck('id','title'); // Recuperamos las categorías, solamente los campos que nos interesan 
+        return view('post.edit',['post' => $postCRUD, 'categories' => $categories]); // Llama a la vista edit.blade.php con el Post y las Categories
+    }
+
+// Ahora, hay que modificar la View edit.blade.php
+//	y añadir los campos Categories (y Posted) para que sean desplegables
+//	y muestren seleccionado el que el Post tiene asignado.
+
+// Observar que lo que hacemos es, al igual que en el create, mostrarlos con un @foreach, pero aquí
+//  la diferencia está en que hay que determinar cuál es la categoría que ya tiene asignado el post 
+//  para dejarlo seleccionado 
+
+                        <div class="mb-3">
+                            <label for="category_id">Categories</label>
+                            <select name="category_id" class="mt-1 block w-full">
+                                @foreach ($categories as $title => $id)
+                                    @if ($post->category_id == $id)
+                                        <option selected value="{{$id}}">{{$title}}</option>                                       
+                                    @else
+                                        <option value="{{$id}}">{{$title}}</option>  
+                                    @endif
+                                @endforeach
+                            </select>
+                        </div> 
+
+// En el caso del posted, simplemente usamos un @if para pintar de una u otra manera
+//  también se podría hacer con un control más sencillo (checked / Unckecked)
+
+                        <div class="mb-3">
+                            <label for="posted" class="form-label">Publicat</label>
+                            <select name="posted" class="mt-1 block w-full">
+                                @if ($post->posted == 'yes')
+                                    <option selected value="yes">Si</option>
+                                    <option value="not">No</option>
+                                @else
+                                    <option value="yes">Si</option>
+                                    <option selected value="not">No</option>
+                                @endif
+                            </select>
+                        </div>
+
+// Si somo observadores, veremos que las actualizaciones NO tienen efecto
+// Finalmente hay que modificar el Model Post
+//	añadiendo en $fillable los "category_id" y el "posted"
+//	en caso contrario, no podremos actualizarlos. 
+
+    protected $fillable = [
+        'title',
+        'url_clean',
+        'category_id',
+        'content',
+        'posted',
+    ];
+
+// Probar de actulizar algunas publicaciones
+// Quizás sería bueno que el index() ordenara por 'updated_at'
+
+// Recordar ahora que en el PostControllerCRUD en update() ahora tenemos una actualización masiva
+    public function update(ActualizarPostRequest $request, Post $postCRUD)
+    {
+        $postCRUD-> update($request->all()); //Actualizamos el registro de la DDBB 
+        return back(); // Vuelve a la página origen, y recarga el registro actualizado
+    }
+
+// Y no así en el store(), donde tenemos por separado cada uno de los campos porque el user_id es FK y lo tomamos como random()
+// También se debería separar cada uno de los campos si fuera necesario un tratamiento, por ejemplo se almacena en la DDBB un 
+//  valor diferente al que se lee (imaginemos almacenar 0/1 en la DDBB en lugar de yes, not, etc.) 
+
+// Si deseamos hacer un guardado o actualizado masivo, como será el caso, hay que indicarlo en el fillable
+// Lo dejamos de esta manera (añadimos el user_id), que será necesario para el create que veremos después. 
+
+    // Campos que son updatables de manera masiva
+    protected $fillable = [
+        'title',
+        'url_clean',
+        'content',
+        'user_id',
+        'category_id',
+        'posted'
+    ]; 
+
+// Probarlo modificando valores de algunas Publicaciones
+
+
+//////////////////////////////////// Vamos a cerrar algunos temas pendientes que nos quedan 
+
+// El objetivo de estos refinamientos finales es ser UX/UI Compliant (no despreciar este trabajo) 
+
+// 1.- Completar el Menú para tener acceso a la creación de elementos (ahora mismo no es posible acceder a esta pantalla)
+// 2.- Ordernar la lista de elementos x fecha de creación / x fecha de actualización
+// 3.- Ordenar los campos de los elementos tal que haya una coherencia en Create / Edit / Update 
+// 4.- Ajustar el número de carácteres en el textarea y controlarlo también mediante atributos html 
+// 5.- Control de acceso mediante Middleware
+// 6.- CKEditor
+// 7.- Eliminación de Posts, que 'salte' al index().
+// 8.- Eliminación de Categories asociadas a un Post
+// 9.- Añadir los UpdateCategoryRequest & UpdatePostRequest
+
+// 1.- Completamos el Menú de opciones para que haya puntos de Menú para Crear Publicaciones y Categorías
+// En la View de navigation.blade.php añadir lo siguiente (queda de la siguiente manera)
+// En resources>views>layouts
+
+                <!-- Navigation Links -->
+                <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
+                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
+                        {{ __('Dashboard') }}
+                    </x-nav-link>
+
+                    <!-- Links para Publicaciones -->
+                    <x-nav-link :href="route('postCRUD.index')" :active="request()->routeIs('postCRUD.index')">
+                        {{ __('Publicaciones') }}
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('postCRUD.create')" :active="request()->routeIs('postCRUD.create')">
+                        {{ __('Publicación [Nueva]') }}
+                    </x-nav-link>
+
+                    <!-- Links para Categorias -->
+                    <x-nav-link :href="route('categoryCRUD.index')" :active="request()->routeIs('categoryCRUD.index')">
+                        {{ __('Categorias') }}
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('categoryCRUD.create')" :active="request()->routeIs('categoryCRUD.create')">
+                        {{ __('Categoría [Nueva]') }}
+                    </x-nav-link>
+                </div>
+            </div>
+
+// Recordar actualizar también los menú responsivos, quedarían de la siguiente manera:
+
+            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
+                {{ __('Dashboard') }}
+            </x-responsive-nav-link>
+
+            <!-- Links Responsivos para Publicaciones -->
+            <div class="pt-2 pb-3 space-y-1">
+                <x-responsive-nav-link :href="route('postCRUD.index')" :active="request()->routeIs('postCRUD.index')">
+                    {{ __('Publicaciones') }}
+                </x-responsive-nav-link>
+            </div>
+            <div class="pt-2 pb-3 space-y-1">
+                <x-responsive-nav-link :href="route('postCRUD.create')" :active="request()->routeIs('postCRUD.create')">
+                    {{ __('Publicación [Nueva]') }}
+                </x-responsive-nav-link>
+            </div>
+    
+            <!-- Links Responsivos para Categorías -->
+            <div class="pt-2 pb-3 space-y-1">
+                <x-responsive-nav-link :href="route('categoryCRUD.index')" :active="request()->routeIs('categoryCRUD.index')">
+                    {{ __('Categorias') }}
+                </x-responsive-nav-link>
+            </div>
+            <div class="pt-2 pb-3 space-y-1">
+                <x-responsive-nav-link :href="route('categoryCRUD.create')" :active="request()->routeIs('categoryCRUD.create')">
+                    {{ __('Categoría [Nueva]') }}
+                </x-responsive-nav-link>
+            </div>
+
+// Probarlo 
+
+// 2.- Cuando se crea un nuevo elementos (Publicación o Categoría) saltamos a la lista de elementos
+//  y hay que buscar el elemento nuevo, normalmente el último de la lista.
+// Podemos mejorarlo haciendo que la lista de elmentos esté ordenada por fecha de actualización (updated_at)
+//  de esta manera mostrará en primer lugar el último elemento creado o actualizado. 
+ 
+// En el PostControllerCRUD y en el CategoryControllerCRUD modificar el método index() de la siguiente manera
+
+    public function index()
+    {
+        // Devuelve el resultado de 3 en 3 publicaciones paginado y ordenado por fecha de actualización descendente
+        $posts = Post::orderBy('updated_at', 'desc')->paginate(3); 
+        return view('post.index',['posts' => $posts]);  // Llamada a la View 'post.index' pasando $posts para maquetar el resultado del SQL
+    }
+
+    public function index()
+    {
+        // Devuelve el resultado de 3 en 3 categorías paginado y ordenado por fecha de actualización descendente
+        $categories = Category::orderBy('updated_at', 'desc')->paginate(3); 
+        return view('category.index', ['categories' => $categories]); // Llama a la vista category/index.blade.php pasando $categories para maquetar el resultado del SQL
+    }
+
+// Ahora sí tiene sentido que las actulizaciones 'salte' al index()
+//	justo después de la actualizaciónn se muestra el primero de la lista
+//	si se ha actualizado volver a actualizarla, la tenemos a mano. 
+
+    public function update(Request $request, Post $postCRUD)
+    {
+        $postCRUD-> update($request->all()); //Actualizamos el registro de la DDBB 
+        return redirect()->route('postCRUD.index'); // Redirige a la ruta postCRUD.index
+    }
+
+
+    public function update(Request $request, Category $categoryCRUD)
+    {
+            $categoryCRUD-> update($request->all()); //Actualizamos el registro de la DDBB 
+            return redirect()->route('categoryCRUD.index');
+    }
+
+
+// 3.- Ordenamos los campos tal que se muestren de igual manera en el Index / Show / Edit / Create
+// Aplicamos siguiente orden (revisarlo para que sea así en las View) 
+
+$post->title
+$post->url_clean
+$post->category->title
+$post->content
+$post->user->name (Sólo en Index / Show)
+$post->posted 
+$post->created_at (Sólo en Index / Show)
+$post->updated_at (Sólo en Index / Show)
+
+
+// 4.- Aprovechamos y restringimos la cantidad de texto que se puede teclear en el textarea de las Publicaciones
+//  recordar que ahora mismo tenemos una restricción de 255 que 'a priori' es un poco pequeña
+//  la subimos a 500 carácters
+
+// Primero en app>Http>Requests>GuardarPostRequest y en ActualizarPostRequests
+
+    public function rules(): array
+    {
+        return [
+            ...
+            'content' => 'required|min:5|max:500',
+        ];
+    }
+
+    public function messages() {
+        return [
+            ...
+            'content.min' => 'El content mínimo son 5 carateres',
+            'content.max' => 'El content máximo son 500 caracters',
+        ]; 
+    }
+
+// Luego en las View de post>create.blade.php y post>edit.blade.php
+// Modificamos la textarea de la siguiente manera
+
+                        <div class="mb-3">
+                            <label for="content">Contingut</label>
+                            <textarea name="content" minlength="5" maxlength="500" style="@error('content') border-color:RED; @enderror" rows="5" class="mt-1 block w-full"></textarea>
+                            @error('content')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+
+                        <div class="mb-3">
+                            <label for="content">Content</label>
+                            <textarea name="content" minlength="5" maxlength="500" style="@error('content') border-color:RED; @enderror" rows="5" class="mt-1 block w-full">{{$post->content}}</textarea>
+                            @error('content')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+// 5- Finalmente en el En el método de store() del PostControllerCRUD tenemos esto 
+        $post->user_id = User::all()->random()->id; // Para que la FK user_id funcione, elegimos al azar
+
+
+//  Que es una selección del usuario de la Publicación mediante una función aleatoria
+//  tenemos que asignar el usuario correcto, pero para ello utilizaremos la autenticación (Middleware)
+
+
+///////////////// MIDDLEWARE (Autenticación Usuarios)
+
+// Ahora mismo tenemos Routes y podemos tener una capa Middleware (opcional) 
+//  en las Routes antes de llamar al Controller
+// El Middleware permite, entre otras cosas, validaciones y control de acceso sobre cada una de las rutas. 
+ 
+// Ahora mimo no está limitado el acceso a las url
+// Si en situación de Log Out accedo por ejemplo a:
+http://<blog-app.test>/postCRUD/
+
+// Devuelve un error (probarlo), porque estamos en estado de login
+// Impide el acceso pero por un error, no por lógica
+// Hay que controlar esto, ahora no se consigue acceder:
+// 	    Internal Server Error
+// 	    Attempt to read property "name" on null
+
+// Vamos a controlarlo mediante una capa de Middlware a nivel de Routes. 
+// recordar el routes>web.php, vemos los siguiente:
+// (Se recomienda crear un web_copy.php y limpiar el web.php de código de ejemplo)
+
+// Observamos lo siguiente 
+Route::get('/dashboard', function () {
+    return view('dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+// tal que, sin estar logineado, probar el 
+http://blog-app.test/dashboard
+
+// Te redirige a
+http://blog-app.test/login
+
+// Esto es exáctamente el comportamiento que queremos y lo controla el Middleware de autenticación
+// Si se intenta acceder a alguna ruta, sin estar logineado, que se rediriga a la pantalla de login
+
+// Hay diferentes maneras de obligar a estar logineado para crear una Publicación
+// Podemos decirlo directamente en la route, como el ejemplo anterior, añadiendo
+// ->middleware(['auth', 'verified'])->name('dashboard');
+
+// Pero también podemos hacerlo agrupando Routes (recordando la agrupación de Routes)
+// 	todas las Routes que se incluya dentro de esta función 
+// 	serán Routes que por defecto tendrán en el middleware un 'auth'
+// Como tenemos las Routes generadas de manera agrupada, es la manera ideal 
+
+// Originalmente tenemos:
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+// Entonces, en web.php vamos a mover las rutas agrupadas del CRUD y ubicarlas 'dentro' de esta función tal que queda así :
+
+Route::middleware('auth')->group(function () {
+
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    ////////////////////// Routes para el modelo MVC
+
+    // Generador de todas la Route para el Controller de PostControllerCRUD
+    Route::resource('/postCRUD', PostControllerCRUD::class); 
+
+    // Generador todas la Route para el Controller de CategoryControllerCRUD
+    Route::resource('/categoryCRUD', CategoryControllerCRUD::class); 
+
+});
+
+// Hacer Log Out y probar ahora de acceder a algunas rutas
+http://example-app.test/postCRUD/create 
+http://example-app.test/categoryCRU
+
+// Ahora te redirige al login automáticamente, el Middleware hace su trabajo. 
+//  no nos permite acceder a una Route sin estar antes logineado
+
+// Y FINALMENTE podremos redondear la función store() del PostController
+// Ahora mismo tenemos esto en el PostControllerCRUD
+
+    public function store(GuardarPostRequest $request)
+    {
+ 	...
+        $post->user_id = User::all()->random()->id; // Para que la FK funcione, elegimos aleatorio. 
+	...
+    }
+
+// Ya podremos ajustarlo de manera adecuada. 
+// la funció store() queda de la siguiente manera:
+
+// (Recordar importar la clase use Illuminate\Support\Facades\Auth;)
+        $post->user_id = Auth::user()->id;  // Obtiene el usuario logineado 
+
+// Así obligamos a que el usuario logineado sea el que se registra como usuario de creación de la Publicación
+// Hacer una prueba creando algunos Post. 
+// En el listado de publicaciones, ya debería visualizarse la publicación del usuario logineado 
+
+
+/////////////////////////////////////// Instalación del CKEditor (Módulo de terceros) para el Backoffice
+
+// Vemos la instalación de este módulo como ejemplo de posible uso de un Módulo: Librería, Componente, Utilidad, etc. 
+//	de un tercero en nuestro proyecto.
+// Estos módulos de terceros pueden crear una brecha de seguridad en nuestro sistema.
+//	cuidaremos pues de que sea un módulo autorizado en nuestro entorno. 
+
+// La configuración del CKEditor requiere de una licencia de usuario 
+// La licencia gratuíta (de desarrollo) se obtiene a partir del registros
+//  	el alumno deberá registrarse en https://ckeditor.com/ utilizando su correo educativo (@iesemilidarder.com)
+
+// Se instalará y configurará el CKEditor mediante la opción CDN 
+//  	hasta el momento, no hemos conseguido hacerlo funcionar mediante la opción Self-hosted (npm/ZIP)
+// La opción CDN se ha conseguido gracias a los alumnos de 2º DAW curso 24/25 (mención especial a Antonio Martínez Mateo)
+// Se puede obtener la documentación oficial de la instalación en :
+// https://ckeditor.com/docs/ckeditor5/latest/getting-started/index.html
+// https://ckeditor.com/docs/ckeditor5/latest/getting-started/installation/cloud/laravel.html
+
+// Se procederá de la siguiente manera
+// CKEditor require de los siguientes scripts y stylesheet, 
+//  	por lo que se ha optado por incluirlos en resources>views>layout>app.blade.php que es el layout 
+//  	de nivel superior (el que incluye <!DOCTYPE html>) que utilizamos por defecto para renderizar todas nuestras View. 
+
+// Dentro de <head> </head> se añaden los scripts y stylesheet del CKEditor "normal" sin "premium features" 
+/  	sin las "premium features" porque suponemos que nuestra licencia no los soporta.
+
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
+
+        <title>{{ config('app.name', 'Laravel') }}</title>
+
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+
+        <!-- Scripts -->
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+        <!-- CKEditor -->
+        <link rel="stylesheet" href="https://cdn.ckeditor.com/ckeditor5/47.3.0/ckeditor5.css" />
+        <script src="https://cdn.ckeditor.com/ckeditor5/47.3.0/ckeditor5.umd.js"></script>
+    </head>
+
+// Seguidamente, accedemos a las View donde deseamos que aparezcan campos con las herramientas que 
+// proporciona el CKEditor, en nuestro caso serían las siguientes View:
+// 	resources>views>post>create.blade.php
+//	resources>views>post>edit.blade.php 
+
+// En create.blade.php se modifica el textarea de la siguiente manera:
+// 	Nota: se elmina el atributo "rows", si lo hubiera, el CKEditor toma el control del tamaño (lo convierte en dinámico)
+// 	Nota: recordar añadir el id="editor" o identificación que hemos elegido para renderizarlo 
+
+<div class="mb-3">
+    <label for="content">Contingut</label>
+    <textarea id="editor" name="content" minlength="5" maxlength="500" style="@error('content') border-color:RED; @enderror" class="mt-1 block w-full"></textarea>
+    @error('content')
+        <div>{{$message}}</div>
+    @enderror
+</div>
+
+
+// Y el siguiente script a pié de la View, entre el último </div> y el </x-app-layout>
+// 	Nota: en licenseKey: 'licencia', el valor 'licencia' se substituirá por la propia
+//	la licencia se obtiene registrándose en su web en las 'Subscription' / License keys
+//	hay una licencia de desarrollo, que será parecida a la siguiente (que es la mía)
+
+eyJhbGciOiJFUzI1NiJ9.eyJleHAiOjE3Nzk0OTQzOTksImp0aSI6ImIzOGY2YTMxLTFmMjAtNDE2OS1iYTk1LWJkYWM1YmQ3MTNlOCIsImxpY2Vuc2VkSG9zdHMiOlsiMTI3LjAuMC4xIiwibG9jYWxob3N0IiwiMTkyLjE2OC4qLioiLCIxMC4qLiouKiIsIjE3Mi4qLiouKiIsIioudGVzdCIsIioubG9jYWxob3N0IiwiKi5sb2NhbCJdLCJ1c2FnZUVuZHBvaW50IjoiaHR0cHM6Ly9wcm94eS1ldmVudC5ja2VkaXRvci5jb20iLCJkaXN0cmlidXRpb25DaGFubmVsIjpbImNsb3VkIiwiZHJ1cGFsIl0sImxpY2Vuc2VUeXBlIjoiZGV2ZWxvcG1lbnQiLCJmZWF0dXJlcyI6WyJEUlVQIiwiRTJQIiwiRTJXIl0sInZjIjoiZDRkMGY4ZTQifQ.XHDt-l2dPSF247dMtRDxFXtfZDPMSfV_7DC43TsP-3XdEEtOOUdUBKEpI6Xj4qAnQtwVycwjygV6ogGRdBs6Ag
+
+    <!-- Script para CKEditor -->
+    <script>
+        const {
+            ClassicEditor,
+            Essentials,
+            Bold,
+            Italic,
+            Font,
+            Paragraph
+        } = CKEDITOR;
+
+        ClassicEditor
+            .create( document.querySelector( '#editor' ), {
+                licenseKey: 'eyJhbGciOiJFUzI.......',
+                plugins: [ Essentials, Bold, Italic, Font, Paragraph],
+                toolbar: [
+                    'undo', 'redo', '|', 'bold', 'italic', '|',
+                    'fontSize', 'fontFamily', 'fontColor', 'fontBackgroundColor', '|'
+                ]
+            } )
+            .then( /* ... */ )
+            .catch( /* ... */ );
+    </script>
+
+</x-app-layout>
+
+// De manera similar para la resources>views>post>edit.blade.php 
+
+// Para que se pueda visualizar correctamente este campo en la lista de elementos
+//  se deberá utilizar la fórmula {!! !!} en resources>views>components>card-posts.blade.php
+//  de esta manera se renderizan las tag en lugar de mostrarse
+
+        <p class="mb-4 text-base">{!! $post->content !!}</p>
+
+// Nota Importante: si se ha usado un Factory para rellenar con ejemplos esta información
+// 	se deberá revisar manualmente uno por uno, es posible que haya tags HTML que ahora,
+//	con el uso del {!! $post->content !!} rompan la correcta renderización 
+
+
+///////////////////////////////////////  FIN CKEditor BackOffice
+
+// 7.- Eliminación de Posts, que 'salte' al index().
+
+// Controlamos un poco mejor la eliminación de Publicaciones
+// 	Se puede hacer;
+//	- que salte al index(), y vuelve a mostrar todo el listado
+//	- un return back(); y en tal caso vuelve a página anterior y recarga paginación
+//	
+//	El problema está en que si vuelve a página anterior y es una página de un solo un registro 
+//	no acaba de funcionar ok. Queda la página en blanco con los links de paginación. 
+
+// Lo dejamos asumiendo el error, no es catastrófico, y se dará en casos muy puntuales
+
+    public function destroy(Post $postCRUD)
+    {
+        $postCRUD->delete(); // Eliminación del registro 
+        return back(); // Vuelve a la página llamante
+    }
+}
+
+
+// 8.- Eliminación de Categories asociadas a un Post (Idem para Publicaciones con Comments) 
+
+// Para redondear nuestro BackOffice quedaría un último detalle. 
+//	(El refinamiento de un website es infinito, se recomienda enmarcar bien las funcionalides antes de comenzar)
+// Si intentamos eliminar una Category asociada a un Post, o un Post que tenga Comentarios genera un error incontrolado de DDBB
+
+// Crear un Post asociándolo a una de las Category existentes. 
+// Proceder a la eliminación de la Category, se obtendrá un error de "Integrity constraint violation"
+// 	'SQLSTATE[23000]: Integrity constraint violation:' 
+//  	ya que se intenta eliminar una Category cuyo ID forma parte de un Post como Foreign Key
+
+// Existen varias maneras de controlarlo, una de ellas es mediante la definición de un Delete Cascade a nivel de DDBB
+// 	aún siendo posible, aquí se descarta esta técnica por ser muy agresiva con la DDBB, y se opta por bloquear
+//  	la eliminación de la Category si forma parte de algún Post
+//	Y en general, se suguiere el uso de la misma técnica, o similar, si hay una FK Constraint (como Posts con Comments) 
+//	Un Delete Cascade se puede descontrolar si a la vez las tuplas que se elimina como consecuencia de esta regla 
+//		tienen a su vez un Delete Cascade asociado. El estropicio puede ser considerable dentro de la DDBB puede ser importante
+//		desde el momento que perdemos el control de lo que se elimina
+//	No obstante, el borrado o eliminación física de información en una DDBB coporativa se suele dar únicamente en casos especiales
+//	Es muy común que la información no se elimine, en su lugar se desactiva, pero casi nunca se elimina. 
+//	Ya que toda la información de una DDBB corpoativa es usada para procesos de análisis (BI, Data Warehouse, etc.)
+//	Los casos de eliminació física de información se suelen dar, casi exclusívamente, cuando se crea un registro por error 
+//		en la mayoría de casos, la eliminación es implementada mediante la desactivación lógica del registro. 
+//		por ejemplo, añadiendo un campo de fecha 'deactivated_at', si existe, la tupla no es activa e indica desde cuándo. 
+
+
+// Se implementa la eliminación física de Categorías, modificaremos el método destroy() en CategoryControllerCRUD
+//	public function destroy(Category $categoryCRUD)  de la siguiente manera:
+//  		- Inicialmente, se comprueba si existe algún Post con un category_id igual al que se desea eliminar
+//      	- Si existe, entonces se impide su elominación y se muestra un mensaje informando de este hecho
+//      	- Si no existe, entonces si se elimina y también se muestra un mensaje de confirmación de borrado
+//	Recordar el use App\Models\Post;
+
+    public function destroy(Category $categoryCRUD)
+    {
+
+        // Eliminación del recurso
+        
+        // Comprobar si la Category a borrar es una FK en algún Post
+        $post = Post::where('category_id','=',$categoryCRUD->id)->count(); 
+
+        // Si existe algún Post con el category_id a borrar no lo borramos y mostramos un mensaje
+        // Si no exite ningún Post con el catetgory_id a borrar entonces sí que lo borramos 
+        if($post) {
+            return back()->with('status','Error: No es posible eliminar la Categoría: Tiene Publicaciones asociadas');
+        } else {
+            $categoryCRUD->delete(); 
+            return back()->with('status','Success: Categoría eliminada correctamente');
+        }
+    }
+
+// Ahora, hay que modificar la View index.blade.php de Category para mostra los mensajes
+// Quedará de la siguiente manera:
+
+<!-- Listado de Categories -->
+<div class="py-12">
+    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+            <div class="p-6 text-gray-900">
+                
+                <!-- Comprobamos si tenemos que mostrar un mensaje de status -->
+                <!-- el if es necesario puesto que la primera vez no tendremos status -->
+                @if (session('status'))
+                    <div class="p-4 mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300" role="alert">
+                        <span class="font-medium">{{ session('status') }}</span>
+                    </div>
+                @endif
+
+                <!-- Se muestran los elementos en forma de Card -->
+                @each('components.card-categories',$categories,'category') <!-- Listado de Categorías -->
+                {{ $categories->links() }} <!-- Paginación -->
+
+            </div>
+        </div>
+    </div>
+</div>
+
+// Recordar lanzar un 'npm run build' ya que los mensajes tienen algunas class no usadas anterioremente
+// Probarlo elimiando alguna Category con y sin Posts aosciados
+http://blog26.test:8000/categoryCRUD
+
+
+// Nota: Ahora que hemos recuperado los mensajes de 'status'
+//	podemos aprovechar para modificar los método store() y update()  
+//  	para mostrar mensaje de success en la creación / actualización
+//	Recordar que si hay error, no retorna al index(), muestra la misma pantalla con un error. 
+
+
+        // Redirige a la ruta categoryCRUD.index con un mensaje
+        return redirect()->route('categoryCRUD.index')->with('status','Success: Categoría creada correctamente'); 
+
+        // Redirige a la ruta categoryCRUD.index con un mensaje
+        return redirect()->route('categoryCRUD.index')->with('status','Success: Categoría actualizada correctamente'); 
+
+// Probarlo intentando borrar categorias que forman parte de publicaciones y otras que no. 
+// Probarlo creado y actualizando categorías con y sin error. 
+
+
+// Ejercicio: 
+//	Aplicar la misma estrategia de mensajes para los métodos update(), store() y destroy() del PostControllerCRUD 
+// 	Obviamente, antes se debe añadir el código html en la View index.blade.php del listado de Posts
+//  	de manera similar a cómo lo hemos hecho para Categorías 
+
+
+ <!-- Listado de Posts -->
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+
+                    <!-- Comprobamos si tenemos que mostrar un mensaje de status -->
+                    <!-- el if es necesario puesto que la primera vez no tendremos status -->
+                    @if (session('status'))
+                        <div class="p-4 mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300" role="alert">
+                            <span class="font-medium">{{ session('status') }}</span>
+                        </div>
+                    @endif
+
+                    <!-- Se muestran los elementos en forma de Card -->
+                    @each('components.card-posts',$posts,'post')
+                    {{ $posts->links() }} <!-- Paginación -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+// 9.- Añadir los UpdateCategoryRequest & UpdatePostRequest
+
+php artisan make:request UpdatePostRequest // Crea un request en app>Http>Requests (crea la carpeta Requests)
+php artisan make:request UpdateCategoryRequest  // Crea un request en app>Http>Requests (crea la carpeta Requests)
+
+// Para UpdateCategoryRequest
+public function rules(): array
+    {
+        return [
+            'title' => ['required','min:5','max:255', new Uppercase],
+            'url_clean' => 'required|min:5|max:255',
+        ];
+    }
+
+    public function messages() {
+        return [
+            'title.required' => 'El título debe estar informado',
+            'title.min' => 'Título mínimo son 5 carateres',
+            'title.max' => 'Título máximo son 255 caracters',
+            'url_clean.required' => 'La url debe estar informada',
+            'url_clean.min' => 'La url mínimo son 5 carateres',
+            'url_clean.max' => 'La url máximo son 255 caracters',
+        ]; 
+    }
+
+// Para UpdatePostRequest
+public function rules(): array
+    {
+        return [
+            'title' => ['required','min:5','max:255', new Uppercase],
+            'url_clean' => 'required|min:5|max:255',
+            'content' => 'required|min:5|max:500',
+        ];
+    }
+
+    public function messages() {
+        return [
+            'title.required' => 'El título debe estar informado',
+            'title.min' => 'Título mínimo son 5 carateres',
+            'title.max' => 'Título máximo son 255 caracters',
+            'url_clean.required' => 'La url debe estar informada',
+            'url_clean.min' => 'La url mínimo son 5 carateres',
+            'url_clean.max' => 'La url máximo son 255 caracters',
+            'content.required' => 'El content debe estar informada',
+            'content.min' => 'El content mínimo son 5 carateres',
+            'content.max' => 'El content máximo son 500 caracters',
+        ]; 
+    }
+
+// En el CategoryControllerCRUD 
+
+    public function update(UpdateCategoryRequest $request, Category $categoryCRUD)
+    {
+        $categoryCRUD-> update($request->all()); //Actualizamos el registro de la DDBB 
+        // Redirige a la ruta categoryCRUD.index con un mensaje
+        return redirect()->route('categoryCRUD.index')->with('status','Success: Categoría actualizada correctamente'); 
+    }
+
+// En el PostControllerCRUD
+
+    public function update(UpdatePostRequest $request, Post $postCRUD)
+    {
+        $postCRUD-> update($request->all()); //Actualizamos el registro de la DDBB 
+
+        // Redirige a la ruta postCRUD.index con un mensaje
+        return redirect()->route('postCRUD.index')->with('status','Success:Publicación actualizada correctamente'); 
+    }
+
+
+********************* Fin del tema Historial de Comandos Tutorial V
