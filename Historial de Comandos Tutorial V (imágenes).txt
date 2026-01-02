@@ -1,0 +1,891 @@
+///////////////////////////////////////////////////////////
+Bartolomé Sabater
+Emili Darder - Desenvolupament Entorn Servidor - 2024-25-26
+
+Gestión de Imágenes en CRUD
+
+///////////////////////////////////////////////////////////
+
+//// Haremos alguna operación con imágenes para indagar sobre las opciones 
+////	que proporciona Laravel con la gestión de imágenes
+ 
+//// La estrategia a seguir será la siguiente
+//// 1.- Crearemos el CRUD de Comments:
+////	lo generaremos desde cero, esto nos permitirá repasar todo el proceso de generación de un CRUD
+////	tener en cuenta que este CRUD tiene una FK a Post.  
+//// 2.- Añadiremos, para cada Comment, una sola imagen. 
+//// 	Estos nos permitirá explorar la gestión de imágenes en Laravel de una manera sencilla
+////	La restricción de 'una sola imágen' es una restricción 'lógica' o de negocio sobre el diseño 
+////		original DDBB, ya que físicamente Comments 1:N Images
+////	Est restricción nos evitará tener que generar un CRUD de imágenes
+////	Esta restrición nos permitirá tratar la imágen como un atributo más de Comments en su CRUD.
+////	Veremos así cómo aplicamos unas reglas de negocio en los Controller 
+////	También veremos la creación de rutas ad-hoc y otros detalles que nos servirán posteriormente
+
+
+// Repasamos las Migration y los Model de Comments e Imagenes
+
+//// Las migrations
+
+    public function up(): void
+    {
+        Schema::create('comments', function (Blueprint $table) {
+            $table->id();
+            $table->text('comment');            
+            $table->foreignId('post_id')->constrained();
+            $table->foreignId('user_id')->constrained();
+            $table->timestamps();
+        });
+    }
+
+    public function up(): void
+    {
+        Schema::create('images', function (Blueprint $table) {
+            $table->id();
+            $table->string('url');
+            $table->foreignId('comment_id')->constrained()->onDelete('restrict');
+            $table->timestamps();
+        });
+    }
+
+//// Los Model de Comments e Imagenes
+
+class Comment extends Model
+{
+    use HasFactory, Notifiable; // Usamos factory
+
+    public function images()  // Relación Padre 1:N con Image
+    {
+        return $this->hasMany(Image::class);
+    }
+
+    public function post() // Relación Hijo N:1 con Post
+    {
+        return $this->belongsTo(Post::class);
+    }
+
+    public function user() // Relación Hijo N:1 con User
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+
+class Image extends Model
+{
+    use HasFactory, Notifiable; // Usamos factory
+
+    public function comment() // Relación N:1 con Comment
+    {
+        return $this->belongsTo(Comment::class); // N:1
+    }
+}
+
+// Observamos claramente que 
+//	Comments 1:N Images, pero aplicaremos una restricción lógica Comments 1:1 Images
+//	Comments es a su vez una N:M entre Posts y Users
+// Por tanto, en el CRUD de Comments que vamos confeccionar
+//	User_id se aplicará automáticamente según el usuario logineado, al estilo User_id de Posts (Inmodificable)
+//	Post_id se seleccionará por el usuario al estilo selección de Category_id cuando creamo un Post, mediante un desplegable
+//		este Post_id se seleccionará mostrando el Post_title (que es único por restricción y suponemos de de tamaño manejable) 
+//	Comment se gestionará vía CKEditor como ya hemos visto en el Content de las Publicaciones
+//	La Imagen se gestionará como si fuera un atributo más de Comments
+//		realmente, se gestionará la url (o path) de la imagen, es decir, su ubicación, porque la imagen no se guarda en la DDBB
+//		la imágen se guardará en el path public>images. De hecho, se copiará de su ubicación original a esta ubicación que no hará de
+//		repositorio de imágenes (podría ser cualquier otro)
+
+
+////////////////////////////////////////// Creación del Controlador
+
+// Recordar que Laravel aplica el paradigma MVC, 
+//	por lo que inicialmente generaremos el Controlador de Comments
+
+λ php artisan make:controller CommentControllerCRUD --resource 
+
+// Revisar los métodos que se crean por defecto (CRUD)
+// 	index() GET; listado de recursos 
+// 	create() GET; formulario de creación de un nuevo elemento, lo recibirá el store()
+// 	store(Request $request) POST; guardar el recurso; se recibe la información del créate()
+// 	show (string $id); muestra la información de un recurso único
+// 	edit (string $id) GET; crea el formulario para la actualización de un recurso, lo recibirá el update()
+// 	update (Request $request, string $id) PATCH; crea o actualiza un recurso, se recibe del edit()
+// 	destroy (string $id) DELETE; elimina recurso 
+
+////////////////////////////////////////// Creación de las Route
+
+// Ahora, habría que crear las Routes con la llamada a cada uno de los métodos del CommentControllerCRUD
+// Afortunadamente, Laravel proporciona una manera de generar las llamadas sin tener que escribirlo todo
+// 	en routes>web.php; añadir lo siguiente
+
+use App\Models\Comment;
+
+use App\Http\Controllers\CommentControllerCRUD;
+
+	// Generador de todas la Route para el Controller de CommentControllerCRUD
+	Route::resource('/commentCRUD', CommentControllerCRUD::class); 
+
+// Comprobar las rutas con el generador de rutas 
+λ php artisan route:list
+
+  GET|HEAD        commentCRUD ............................................ commentCRUD.index › CommentControllerCRUD@index
+  POST            commentCRUD ............................................ commentCRUD.store › CommentControllerCRUD@store
+  GET|HEAD        commentCRUD/create ..................................... commentCRUD.create › CommentControllerCRUD@create
+  GET|HEAD        commentCRUD/{commentCRUD} .............................. commentCRUD.show › CommentControllerCRUD@show
+  PUT|PATCH       commentCRUD/{commentCRUD} .............................. commentCRUD.update › CommentControllerCRUD@update
+  DELETE          commentCRUD/{commentCRUD} .............................. commentCRUD.destroy › CommentControllerCRUD@destroy
+  GET|HEAD        commentCRUD/{commentCRUD}/edit ......................... commentCRUD.edit › CommentControllerCRUD@edit
+
+
+////////////////////////////////////////// Creación de las View
+
+// En resources>views crear una carpeta de coment y dentro los siguiente ficheros (uno por cada View)
+// 	resources>views>comment>create.blade.php 
+//	resources>views>comment>edit.blade.php
+//	resources>views>comment>index.blade.php
+//	resources>views>comment>show.blade.php
+
+
+///////////// View para la creació create.blade.php (se incluye CKEditor, añadir licencia propia)
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Crear un Comentario') }}
+        </h2>
+    </x-slot>
+    
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 ">
+                    
+                    <form action="{{ route('commentCRUD.store') }}" method="post">
+                        @csrf  <!-- Security Token -->
+
+                        <div class="mb-3">
+                            <label for="posts_id">Publicaciones</label>
+                            <select name="posts_id" class="mt-1 block w-full">
+                                @foreach ($posts as $title => $id)
+                                    <option value="{{$id}}">{{$title}}</option>
+                                @endforeach
+                            </select>
+                        </div> 
+
+                        <div class="mb-3">
+                            <label for="comment">Comment</label>
+                            <textarea id="editor" name="comment" minlength="5" maxlength="500" style="@error('comment') border-color:RED; @enderror" class="mt-1 block w-full"></textarea>
+                            @error('comment')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+                       
+                        <div>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Crear</button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script para CKEditor -->
+    <script>
+        const {
+            ClassicEditor,
+            Essentials,
+            Bold,
+            Italic,
+            Font,
+            Paragraph
+        } = CKEDITOR;
+
+        ClassicEditor
+            .create( document.querySelector( '#editor' ), {
+                licenseKey: '...' 
+                plugins: [ Essentials, Bold, Italic, Font, Paragraph],
+                toolbar: [
+                    'undo', 'redo', '|', 'bold', 'italic', '|',
+                    'fontSize', 'fontFamily', 'fontColor', 'fontBackgroundColor', '|'
+                ]
+            } )
+            .then( /* ... */ )
+            .catch( /* ... */ );
+    </script>
+
+</x-app-layout>
+
+
+// Llamada de la View desde el Controller
+//	recordar que una View no se pueden llamar de manera directa
+//	Y la llamada deberá pasar los Posts para poder mostrarlo en desplegable
+
+    public function create()
+    {
+        $posts = Post::pluck('id','title'); // Recuperamos las Publicaciones, solamente los campos que nos interesan 
+        return view('comment.create', ['posts' => $posts]); // Llama a la vista create.blade.php con Posts 
+    }
+
+// Probarlo con 
+http://<blog26.test>/commentCRUD/create
+
+
+// Completar el método store() del Controller para poder hacer la primera prueba de creación de registro
+
+    public function store(GuardarCommentRequest $request)
+    {
+        // Si las validaciones son OK, entonces se debe proceder al insert en la DDBB
+        $comment = new Comment; 
+
+        $comment->post_id = $request->posts_id;
+        $comment->comment = $request->comment;
+        $comment->user_id = Auth::user()->id;  // Obtiene el usuario logineado 
+
+        $comment->save(); // Realiza el insert en la DDBB
+
+        // Redirige a la ruta commentCRUD.index con un mensaje
+        return back()->with('status', 'Publicación creada correctamente');
+        // return redirect()->route('commentCRUD.index')->with('status','Success:Comentario creado correctamente'); 
+    }
+
+// Ahora, generar el GuardarCommentRequest de la siguiente manera
+
+λ php artisan make:request GuardarCommentRequest // Crea un request en app>Http>Requests
+
+    public function authorize(): bool
+    {
+        return true; // Permitir a todos los usuarios realizar esta solicitud
+    }
+
+
+    public function rules(): array
+    {
+        return [
+            'comment' => 'required|min:5|max:500', // Reglas de validación para el campo 'comment'
+        ];
+    }
+
+    // Mensajes personalizados de error
+    public function messages() {
+        return [
+            'comment.required' => 'El comment debe estar informado',
+            'comment.min' => 'El comment mínimo son 5 carateres',
+            'comment.max' => 'El comment máximo son 500 caracters',
+        ]; 
+    }
+
+// Recordar modificar el Model para que sea fillable
+
+    // Campos que se pueden asignar masivamente (desde formulario)
+    protected $fillable = [
+        'comment',        
+        'post_id',
+        'user_id'
+    ];
+
+    // Campos inmodificables
+    protected $guarded = [
+        'id'
+    ];
+
+// Probarlo (no salta al index()) pero debería guardarlo
+// Cambiar el return() por lo siguiente para probar la creación 
+//	y comprobarlo dentro de la DDBB
+
+return back(); // Vuelve a la página anterior 
+
+
+///////////// View para el listado de comentarios index.blade.php 
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Listado de Comentarios') }}
+        </h2>
+    </x-slot>
+
+    <!-- Listado de Comentarios -->
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+
+                    <!-- Comprobamos si tenemos que mostrar un mensaje de status -->
+                    <!-- el if es necesario puesto que la primera vez no tendremos status -->
+                    @if (session('status'))
+                        <div class="p-4 mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300" role="alert">
+                            <span class="font-medium">{{ session('status') }}</span>
+                        </div>
+                    @endif
+
+                    <!-- Se muestran los elementos en forma de Card -->
+                    @each('components.card-comments',$comments,'comment')
+                    {{ $comments->links() }} <!-- Paginación -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</x-app-layout>
+
+// Creamos el componente components.card-comments
+// en resource>view>components>card-comments.blade.php
+
+<!-- Muestra la informacion de un Comment en particular, en modo Card -->
+<div class="block rounded-lg bg-white shadow-secondary-1">
+    <div class="p-6 text-surface">
+        
+        <h5 class="mb-2 text-xl font-medium leading-tight">{!! $comment->id !!} {{ $comment->post->title }}</h5>
+
+        <p class="mb-4 text-base">{!! $comment->comment !!}</p>
+        <p class="mb-4 text-sm">user: {{$comment->user->name}}</p>
+        <p class="mb-4 text-sm">created at: {{ $comment->created_at }}</p>
+        <p class="mb-4 text-sm">updated at: {{ $comment->updated_at }}</p>
+
+
+        <a href="{{route('commentCRUD.show' , ['commentCRUD' => $comment->id])}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+        <a href="{{route('commentCRUD.edit' , ['commentCRUD' => $comment->id ])}}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+        <form action="{{route('commentCRUD.destroy' , ['commentCRUD' => $comment->id ])}}" method="POST" class="float-right">
+            @method('DELETE')
+            @csrf
+            <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" >Delete</button>
+        </form>
+    </div
+
+// Ajustamos la llamada del método store() al método index() en el Controller 
+
+        // Redirige a la ruta commentCRUD.index con un mensaje
+        return redirect()->route('commentCRUD.index')->with('status','Success:Comentario creado correctamente');
+
+// Ajustamos el método index() en el Controller
+
+    public function index()
+    {
+        // Devuelve el resultado de 3 en 3 comentarios paginado y ordenado por fecha de actualización descendente
+        $comments = Comment::orderBy('updated_at', 'desc')->paginate(3); 
+        // Llamada a la View 'comment.index' pasando $comments para maquetar el resultado del SQL
+        return view('comment.index',['comments' => $comments]);  
+    }
+
+// Probarlo todo, creando algún comentario 
+
+
+///////////// View para la edición de comentarios edit.blade.php (Incluye CKEditor) 
+
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Editar Comment #' ) }} {{ $comment->id }} {{ __('del Post : ') }} {{ $comment->post->title  }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900 ">
+
+                    <form action="{{ route('commentCRUD.update', ['commentCRUD' => $comment->id ]) }}" method="post">
+
+                        @csrf
+                        @method('PUT') 
+                        
+                        <!-- Selección de Post del Comment -->
+                        <div class="mb-3">
+                            <label for="post_id">Posts</label>
+                            <select name="post_id" class="mt-1 block w-full">
+                                @foreach ($posts as $title => $id)
+                                    @if ($comment->post_id == $id)
+                                        <option selected value="{{$id}}">{{$title}}</option>                                       
+                                    @else
+                                        <option value="{{$id}}">{{$title}}</option>  
+                                    @endif
+                                @endforeach
+                            </select>
+                        </div> 
+
+                        <div class="mb-3">
+                            <label for="comment">Comment</label>
+                            <textarea id="editor" name="comment" minlength="5" maxlength="500" style="@error('comment') border-color:RED; @enderror" class="mt-1 block w-full">{{$comment->comment}}</textarea>
+                            @error('comment')
+                                <div>{{$message}}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Actualizar</button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <!-- Script para CKEditor -->
+    <script>
+        const {
+            ClassicEditor,
+            Essentials,
+            Bold,
+            Italic,
+            Font,
+            Paragraph
+        } = CKEDITOR;
+
+        ClassicEditor
+            .create( document.querySelector( '#editor' ), {
+                licenseKey: '....',
+                plugins: [ Essentials, Bold, Italic, Font, Paragraph],
+                toolbar: [
+                    'undo', 'redo', '|', 'bold', 'italic', '|',
+                    'fontSize', 'fontFamily', 'fontColor', 'fontBackgroundColor', '|'
+                ]
+            } )
+            .then( /* ... */ )
+            .catch( /* ... */ );
+    </script>
+
+</x-app-layout>
+
+
+// Ajustamos la llamada del método edit() del CommentControllerCRUD
+
+    public function edit(Comment $commentCRUD)
+    {
+        // Recuperamos las categorías, solamente los campos que nos interesan 
+        $posts = Post::pluck('id','title'); 
+        // Llama a la vista edit.blade.php con el Comment y los Posts
+        return view('comment.edit',['comment' => $commentCRUD, 'posts' => $posts]); 
+    }
+
+// Probarlo, listando los Comment y pulsando sobre el botón edit de alguno
+
+// Ajustar el método update() del Controller para que se lleve a cabo la actualización 
+// Observar que podemos reutilizar el Crear el GuardarCommentRequest
+
+    public function update(GuardarCommentRequest $request, Comment $commentCRUD)
+    {
+        //Actualizamos el registro de la DDBB 
+        $commentCRUD-> update($request->all()); 
+        // Redirige a la ruta commentCRUD.index con un mensaje
+        return redirect()->route('commentCRUD.index')->with('status','Success: Comentario actualizado correctamente');
+    }
+
+ 
+///////////// Vamos ahora por los fáciles, el método show() y el métdo destroy() 
+
+
+// Actualizamos el método destroy() 
+// 	Notar que los Comment pueden tener Imágenes cargadas con Seeder / Factory
+//	al intentart borrar alguno con Imágen asociada generará un error
+//	Hay que controlar el FK Integrity Constraint Violation error. 
+
+
+    public function destroy(Comment $commentCRUD)
+    {
+        // Eliminación del recurso
+
+        // Comprobar si el Comment a borrar es una FK en algunag Imágen
+        $image = Image::where('comment_id','=',$commentCRUD->id)->count();
+
+        // Si existe alguna Imágen con el comment_id a borrar no lo borramos y mostramos un mensaje
+        if($image > 0){ 
+            return redirect()->route('commentCRUD.index')->with('status','Error: El comentario no se puede eliminar porque tiene imágenes asociadas');
+        } else {
+            // Si no exite ninguna Imágen con el comment_id a borrar entonces sí que lo borramos
+            $commentCRUD->delete(); // Eliminación del registro
+            // Redirige a la ruta commentCRUD.index con un mensaje
+            return redirect()->route('commentCRUD.index')->with('status','Success: Comentario eliminado correctamente');
+        }
+    }
+
+// Probarlo eliminando algunos Comment con y sin Imagen asociada (imagen proveniente de Seeder / Factory). 
+
+// Creamos ahora la View de show.blade.php en resources>views>comment>show.blade.php
+
+<x-app-layout>
+
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Show Comment :') }} {{ $comment->post->title }}
+        </h2>
+    </x-slot>
+
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+                    <!-- Llamada al componente card-comments pasándole el objeto $comment para maquetar el comentario -->
+                    <x-card-comments :comment="$comment" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+</x-app-layout>
+
+// Ajustamos el método show() para llamar a la View
+
+    public function show(Comment $commentCRUD)
+    {
+        // Mostramos el Comment específico
+        return view('comment.show',['comment' => $commentCRUD]); 
+    }
+
+
+///////////// Añadir las opciones de Menú que todavía no tenemos. 
+
+// accedemos a resources>views>layouts>navigation.blade.php
+// Añadimos los puntos de menú para los Comment
+
+                    <!-- Links para Commentarios -->
+                    <x-nav-link :href="route('commentCRUD.index')" :active="request()->routeIs('commentCRUD.index')">
+                        {{ __('Comentarios') }}
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('commentCRUD.create')" :active="request()->routeIs('commentCRUD.create')">
+                        {{ __('Comentario [Nuevo]') }}
+                    </x-nav-link>
+
+            <!-- Links Responsivos para Comentarios -->
+            <div class="pt-2 pb-3 space-y-1">
+                <x-responsive-nav-link :href="route('commentCRUD.index')" :active="request()->routeIs('commentCRUD.index')">
+                    {{ __('Comentarios') }}
+                </x-responsive-nav-link>
+            </div>
+            <div class="pt-2 pb-3 space-y-1">
+                <x-responsive-nav-link :href="route('commentCRUD.create')" :active="request()->routeIs('commentCRUD.create')">
+                    {{ __('Comentario [Nuevo]') }}
+                </x-responsive-nav-link>
+            </div>
+ 
+///////////////////////////////////// Y ahora mismo ya tendríamos el CRUD de Comments funcionando OK. 
+
+
+//////////////////////////////////// Inclusión de una Imagen en cada Comentario
+
+// Probar que todo funciona OK, si todo es correcto, procederemos a modificar este CRUD para que 
+//	se puedan incluir imágenes en el comentario.
+ 
+// Para incluir una imágen se tomará la restricción de negocio de Comment 1:(0-1) Imagen
+//	de esta manera, la imágen pasa a ser como un atributo más del Comment
+//	siendo la imágen opcional. 
+
+// De la imagen se almacena su ubicación (URL o path) en la DDBB no la imágen en sí. 
+//	esto se puede corroborar revisando la migración de la table Imagen
+
+
+// Inicialmente, ajustamos el Model para que los campos
+// 	se puedan popular masivamente (desde formulario)
+
+    protected $fillable = [
+        'url',        
+        'comment_id'
+    ];
+
+    // Campos inmodificables
+    protected $guarded = [
+        'id'
+    ];
+
+
+// Vamos ahora a confeccionar la parte gráfica de subir una imagen a los Comment 
+// Incluimos el siguiente código en resources>views>comments>edit.blade.php
+//	De este manera, la lógica será; primero creamos el comentario y posteriormente lo editamos para añadir
+//	si así se desea, una imágen. Es decir, debe existir el Comment para asociarle una imágen.  
+
+// Lo hacemos en formularios (forms) separados, aunque sea la misma pantalla, son acciones separadas
+//	- una acción es la de actualizar el comentario
+//	- otra acción es asociar una imágen al comentario
+// Este código se ubica justo después del </form> que ya existe. 
+//	Según este código, si hay imágen se muestra, si no hay imágen se muestra el formulario de subida
+//	de esta manera, solo se permite una imágen por Comment. 
+
+    		<!-- Subida de imagen del Comment -->
+                    <br>
+                    @if (!$comment->image)
+                
+                        <form action="{{ route("comment.image", $comment) }}" method="POST" enctype="multipart/form-data">
+
+                            @csrf
+                            
+                            <div class="mb-3">
+                                <label for="url">Imagen</label>
+                                <input type="file" name="url" class="mt-1 block w-full" />
+                                @error('url')
+                                    <div>{{$message}}</div>
+                                @enderror
+                            </div>
+
+                            <div>
+                                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Subir</button>
+                            </div>
+                        
+                        </form>
+                        
+                    @else
+                        <img src="/images/{{$comment->image->url}}" alt="">
+                    @endif
+
+
+// En el método edit() del CommentControllerCRUD
+//	hay que añadir la información de la imágen para el comentario que se edita
+//	optamos por añadirl esta información como información extra dentro del mismo $commentCRUD
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(Comment $commentCRUD)
+    {
+        // Recuperamos las Publicaciones, solamente los campos que nos interesan 
+        $posts = Post::pluck('id','title'); 
+
+        // Recuperamos la primera imagen asociada al Comment (si existe)
+        $image = Image::where('comment_id','=',$commentCRUD->id)->first();
+        $commentCRUD->image = $image; // Añadimos la tupla de la imagen al Comment
+
+        // Llama a la vista edit.blade.php con el Comment y las Publicaciones
+        return view('comment.edit',['comment' => $commentCRUD, 'posts' => $posts]); 
+    }
+
+
+// Y ahora hay que ir al CommentControllerCURD para crear el método y la ruta. 
+//	para guardar la imagen que se ha asociado al Comment
+//	Notar que este método es nuevo, no se ha generado automáticamente
+//	y podríamos crear tantos métodos nuevos como necesitáramos (con su ruta asociada)
+
+    /**
+     * Subida de imagen asociada a un Comment
+     */
+    public function image(GuardarImagenRequest $request, Comment $comment) {
+
+    // Recordar que la ruta definida es
+    // '/commentCRUD/{comment}/edit/image'
+
+        $filename = time().".".$request->url->extension();
+        $request->url->move(public_path('images'), $filename);
+        
+        Image::create(['url' => $filename, 'comment_id' => $comment->id]);
+
+        // return a la misma pantalla para que muestre la imágen recién cargada
+        return back(); 
+    }
+
+// Explicación del código :
+//	$filename = time().".".$request->image->extension(); Este código es para asginarle un nuevo nombre a la imágen 
+//		este nuevo nombre del archivo se compone de la hora y la extensión (así se independiza del nombre original, sea el que sea)
+// 	$request->url->move(public_path('images'), $filename); Este código es para 'mover' (copiar) la imagen a la carpeta de imágenes públicas de Laravel 
+// 	Image::create(['url' => $filename, 'comment_id' => $comment->id]); Este código es para crear la tupla y la relación Imagen con Comment en la DDBB  
+// Y se opta por volver a la pantalla anterior con un return back(); dando la posibilidad de la imágen subida y modificar el Comment. 
+ 
+// El contenido de GuardarImagenRequest es como sigue
+//	recordar crearlo con el artisan
+
+λ php artisan make:request GuardarImagenRequest
+
+class GuardarImagenRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     */
+
+    // Reglas de validación
+    public function rules(): array
+    {
+        return [
+            'url' => 'required|mimes:jpeg,jpg,bmp,png|max:10240',
+        ];
+    }
+
+    // Mensajes personalizados de error
+    public function messages() { 
+        return [
+            'url.required' => 'La imagen debe estar informada',
+            'url.mimes' => 'La imagen debe ser de tipo jpeg, jpg, bmp o png',
+            'url.max' => 'La imagen debe tener un tamaño máximo de 10MB',
+        ]; 
+    }
+}
+
+// Y nos faltaría crear la ruta en la web, porque si no, no podríamos acceder al método de guardar imágenes
+// Vamos a routes>web.php 
+
+    // Route para la subida de imagen de un Comment
+    Route::post('/commentCRUD/{comment}/edit/image', [CommentControllerCRUD::class, 'image'])->name('comment.image');
+
+
+// Probarlo ahora editando un comentario asignádole imágenes con y sin error. 
+// Si ha subido el archivo se puede comprobar en public>images> y las imágenes estarán dentro. 
+// Y en la DDBB, veremos las tuplas recién creadas. 
+
+// Vamos a refinarlo un poco más:
+//	Si hay imágen, en la edición del Comment se debería añadir un botón de eliminación de la imagen
+//	junto con la imágen mostrada. Así permitimos 
+//		- cambiar la Imagen del Comment; Borrando la existente y subiendo una nueva 
+// Modificamos el edit.blade.php del Comment de la siguiente manera
+
+
+// Antiguo código 
+
+                    @else
+                        <img src="/images/{{$comment->image->url}}" alt="">
+                    @endif
+
+// Nuevo código 
+
+    		@else
+
+                        <h3 class="mb-2 text-xl font-medium leading-tight">Imagen asociada al Comment:</h3>
+                    
+                        <div class="mb-3">
+                            <img src="/images/{{$comment->image->url}}" alt="">
+                        </div>
+
+                        <form action="{{route('image.destroy' , ['image' => $comment->image->id ])}}" method="POST" class="float-left">
+                            @method('DELETE')
+                            @csrf
+                            <div class="mb-3">
+                                <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" >Delete</button>
+                            </div>
+                        </form>
+                    @endif
+
+
+// Tenemos que crear la ruta en web.php
+
+    // Route para la eliminación de una imagen
+    Route::delete('/commentCRUD/destroy/{image}', [CommentControllerCRUD::class, 'destroyImage'])->name('image.destroy');
+
+// Ahora codificamos el método en el CommentControllerCRUD
+
+    /**
+     * Remove the specified image from storage.
+     */
+    public function destroyImage(Image $image)
+    {
+        // Eliminación del recurso
+
+        // Borrar el registro de la DDBB
+        $image->delete();
+
+        // Borrar la imagen del directorio public/images
+        $imagePath = public_path('images/' . $image->url);
+        $windowsPath = str_replace('/', DIRECTORY_SEPARATOR, $imagePath);
+    
+        File::delete($windowsPath); 
+
+        return back(); // return a la misma pantalla para que recargue sin la imágen eliminada
+    }
+
+// $imagePath = public_path('images/' . $image->url); Construye el path de la imágen
+// $windowsPath = str_replace('/', DIRECTORY_SEPARATOR, $imagePath); Sanitiza la ruta substitiyendo los '/' por '\'
+// File::delete($windowsPath); Borra el fichero físicamente del directorio (hay que importar la Class File)
+
+// Hacer pruebas añadiendo y eliminando imágenes de Comments. 
+
+
+// Queda un último detalle para redondear la presentación
+// En el listado de Comments deberíamos mostra la imágen asociada a cada Comment
+//	ahora mismo, en el listado de Comment no sabemos si hay o no imágen (y si la hay cuál es)
+//	estaríamos obligados a editar cada Comment rompiendo el UX que hemos ido cuidando hasta ahora.
+//	No obstante, añadir la imágen a cada Comment en el listado nos rompería la maquetación del listado al 
+//	generar una pantalla muy larga (mucho scroll). 
+//	En su lugar, lo que haremos será mostrar un enlace a la imágen para que podamso pinchar en ella. 
+// 	Se mostrará la url en el show y en el index, ya que comparten el mismo component
+
+
+// Modificamos el component cards-comment.blade.php para mostrar la url de la imágen
+
+<!-- Muestra la informacion de un Comment en particular, en modo Card -->
+<div class="block rounded-lg bg-white shadow-secondary-1">
+    <div class="p-6 text-surface">
+        
+        <h5 class="mb-2 text-xl font-medium leading-tight">{!! $comment->id !!} {{ $comment->post->title }}</h5>
+
+        <p class="mb-4 text-base">{!! $comment->comment !!}</p>
+        <p class="mb-4 text-sm">user: {{$comment->user->name}}</p>
+        <p class="mb-4 text-sm">created at: {{ $comment->created_at }}</p>
+        <p class="mb-4 text-sm">updated at: {{ $comment->updated_at }}</p>
+
+        <!-- Mostrar imágen -->
+        @if ($comment->image)
+            <p class="mb-4 text-sm">Imagen asociada al Comment: 
+                <a href="{{ '/images/' . $comment->image->url }}" class="text-blue-600 hover:text-blue-800 underline">{{ $comment->image->url }}</a>
+            </p>
+        @endif
+
+        <!-- Botones de acciones -->
+        <a href="{{route('commentCRUD.show' , ['commentCRUD' => $comment->id])}}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Show</a>
+        <a href="{{route('commentCRUD.edit' , ['commentCRUD' => $comment->id ])}}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+        <form action="{{route('commentCRUD.destroy' , ['commentCRUD' => $comment->id ])}}" method="POST" class="float-right">
+            @method('DELETE')
+            @csrf
+            <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" >Delete</button>
+        </form>
+    </div>
+</div>
+
+
+// Modificamos el método show() para que incluya la imágen
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(Comment $commentCRUD)
+    {
+
+        // Recuperamos la primera imagen asociada al Comment (si existe)
+        $image = Image::where('comment_id','=',$commentCRUD->id)->first();
+        $commentCRUD->image = $image; // Añadimos la tupla de la imagen al Comment
+
+        // Mostramos el Comment específico
+        return view('comment.show',['comment' => $commentCRUD]); 
+    }
+
+// Finalmente, modificamos el método index() para que haga lo mismo
+
+    /**
+     * Display a listing of the resource.
+     */
+    public function index()
+    {
+        // Devuelve el resultado de 3 en 3 comentarios paginado y ordenado por fecha de actualización descendente
+        $comments = Comment::orderBy('updated_at', 'desc')->paginate(3); 
+
+        // Recuperamos las imágenes asociadas a cada Comment
+        foreach($comments as $comment) {
+            // Recuperamos la primera imagen asociada al Comment (si existe)
+            $image = Image::where('comment_id','=',$comment->id)->first();
+            $comment->image = $image; // Añadimos la tupla de la imagen al Comment
+        }   
+
+        // Llamada a la View 'comment.index' pasando $comments para maquetar el resultado del SQL
+        return view('comment.index',['comments' => $comments]);  
+    }
+
+// Probalo todo, creando Comment y asociándo una imágen, borrando Comment
+//	borrando Imagen de Comment, etc. 
+// Quizás aquí sí estaría permitido el DELETE CASCADE ya que cuando se borra un Comment
+//	es evidente que se deberá borrar automáticamente la Image que tuviera asociada
+//	al fin y al cabo es una restricción de negocio de 1:0-1 
+
+// Ejercicio: Mejorarlo todo permitiendo que un Comment pueda tener más de una Image, es decir, liberarlo de la 
+//	restricción de negocio del 1:1-0. 
+
+
+//////////////////////////////////////////////// FIN DEL TEMA IMÁGENES

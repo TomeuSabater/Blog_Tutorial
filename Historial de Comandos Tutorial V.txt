@@ -4,9 +4,10 @@ Emili Darder - Desenvolupament Entorn Servidor - 2024-25-26
 
 Finalización del CRUD
 
-	- Navegación 
+	- Navegación - Menúes 
     	- CKEditor 
-	- Relaciones (de entidades) y Middleware
+	- Relaciones (de entidades)
+	- Middleware
 	- Relaciones: 1:1, 1:N, N:M (Desplegables)
 
 ///////////////////////////////////////////////////////////
@@ -112,17 +113,6 @@ http://blog-app.test/dashboard
 // Comprobar que el menú hamburguesa contiene la navegación 
 http://<blog-app.test>/dashboard
 
-
-///////////////////////////  CKEditor
-
-(Está explicado más abajo) 
-//// Hagamos dos cosas 'especiales' 
-//// Vamos a instalar el CKEditor (https://ckeditor.com/) que es un editor de texto en formato WYSIWYG que permite escribir contenido directamente dentro de 
-//// las páginas web o aplicaciones en línea. Su código está escrito en JavaScript (es una librería JS) y está desarrollado por CKSource (https://cksource.com/)
-//// Esto nos permitirá 'tratar' el texto, por ejemplo, el texto de las Publicaciones en el textarea, cuando las creamos / editamos, tener una herramienta
-//// que nos permitan tratar el texto. 
-//// El CKEditor no es el único que existe, se pueden poner otros 
-//// Veámoslo:
 
 
 ////////////////////////////  RELACIONES
@@ -478,6 +468,7 @@ http://blog-app.test/postCRUD
 // 7.- Eliminación de Posts, que 'salte' al index().
 // 8.- Eliminación de Categories asociadas a un Post
 // 9.- Añadir los UpdateCategoryRequest & UpdatePostRequest
+// 10.- Gestión de imágenes (ver Historial de Comandos V (imágenes) 
 
 // 1.- Completamos el Menú de opciones para que haya puntos de Menú para Crear Publicaciones y Categorías
 // En la View de navigation.blade.php añadir lo siguiente (queda de la siguiente manera)
@@ -741,21 +732,27 @@ http://example-app.test/categoryCRU
 
 /////////////////////////////////////// Instalación del CKEditor (Módulo de terceros) para el Backoffice
 
+//// Vamos a instalar el CKEditor (https://ckeditor.com/) que es un editor de texto en formato WYSIWYG que permite escribir 
+//// 	contenido directamente dentro de las páginas web o aplicaciones en línea. 
+//// Su código está escrito en JavaScript (es una librería JS) y está desarrollado por CKSource (https://cksource.com/)
+//// Esto nos permitirá 'tratar' el texto, por ejemplo, el texto de las Publicaciones en el textarea, 
+////	cuando las creamos / editamos, tener una herramienta que nos permitan tratar el texto. 
+//// El CKEditor no es el único que existe, se pueden integrarse otros similares
+//// La configuración del CKEditor requiere de una licencia de usuario 
+//// La licencia gratuíta (de desarrollo) se obtiene a partir del registros
+//// 	por lo que el alumno deberá registrarse en https://ckeditor.com/ utilizando su correo educativo (@iesemilidarder.com)
+
 // Vemos la instalación de este módulo como ejemplo de posible uso de un Módulo: Librería, Componente, Utilidad, etc. 
 //	de un tercero en nuestro proyecto.
 // Estos módulos de terceros pueden crear una brecha de seguridad en nuestro sistema.
 //	cuidaremos pues de que sea un módulo autorizado en nuestro entorno. 
 
-// La configuración del CKEditor requiere de una licencia de usuario 
-// La licencia gratuíta (de desarrollo) se obtiene a partir del registros
-//  	el alumno deberá registrarse en https://ckeditor.com/ utilizando su correo educativo (@iesemilidarder.com)
-
 // Se instalará y configurará el CKEditor mediante la opción CDN 
 //  	hasta el momento, no hemos conseguido hacerlo funcionar mediante la opción Self-hosted (npm/ZIP)
 // La opción CDN se ha conseguido gracias a los alumnos de 2º DAW curso 24/25 (mención especial a Antonio Martínez Mateo)
 // Se puede obtener la documentación oficial de la instalación en :
-// https://ckeditor.com/docs/ckeditor5/latest/getting-started/index.html
-// https://ckeditor.com/docs/ckeditor5/latest/getting-started/installation/cloud/laravel.html
+// 	https://ckeditor.com/docs/ckeditor5/latest/getting-started/index.html
+// 	https://ckeditor.com/docs/ckeditor5/latest/getting-started/installation/cloud/laravel.html
 
 // Se procederá de la siguiente manera
 // CKEditor require de los siguientes scripts y stylesheet, 
@@ -800,7 +797,6 @@ http://example-app.test/categoryCRU
         <div>{{$message}}</div>
     @enderror
 </div>
-
 
 // Y el siguiente script a pié de la View, entre el último </div> y el </x-app-layout>
 // 	Nota: en licenseKey: 'licencia', el valor 'licencia' se substituirá por la propia
@@ -947,8 +943,8 @@ eyJhbGciOiJFUzI1NiJ9.eyJleHAiOjE3Nzk0OTQzOTksImp0aSI6ImIzOGY2YTMxLTFmMjAtNDE2OS1
     </div>
 </div>
 
-// Recordar lanzar un 'npm run build' ya que los mensajes tienen algunas class no usadas anterioremente
-// Probarlo elimiando alguna Category con y sin Posts aosciados
+// Recordar lanzar un 'npm run dev/build' ya que los mensajes tienen algunas class no usadas anterioremente
+// Probarlo elimiando alguna Category con y sin Posts asociados
 http://blog26.test:8000/categoryCRUD
 
 
@@ -1067,4 +1063,4 @@ public function rules(): array
     }
 
 
-********************* Fin del tema Historial de Comandos Tutorial V
+//////////////////////////////////////////// Fin del tema (próximo tema se completará con la gestión de imágenes) 

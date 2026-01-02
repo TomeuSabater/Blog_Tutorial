@@ -1937,4 +1937,4 @@ http://blog-app.test/categoryCRUD/1
 // Esto también lo veremos más adelante, se modifica el create.blade.php
 
 
-////////////////////////////////////////////   FIN DEL TEMA (Falta la navegación y algunos detalles de presentación) 
+////////////////////////////////////////////   FIN DEL TEMA (Falta la navegación y algunos detalles de presentación que veremos a continuación) 
